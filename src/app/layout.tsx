@@ -26,11 +26,16 @@ export default function RootLayout({ children }: { children: ReactNode }) {
               <a href="/New-Game" className="ml-4 hover:underline">New Game</a>
               <a href="/units" className="ml-4 hover:underline">Units</a>
               <a href="/about" className="ml-4 hover:underline">About</a>
-
             </nav>
         </header>
 
         {children}
+
+        <footer>
+          <div className="p-4 border-t border-slate-800 text-center text-sm text-slate-500">
+            &copy; 2025 Board War. All rights reserved.
+          </div>
+        </footer>
       </body>
     </html>
   );
