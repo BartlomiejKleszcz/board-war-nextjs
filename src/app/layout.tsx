@@ -2,6 +2,7 @@ import "./globals.css";
 import type { ReactNode } from "react";
 import type { Metadata } from "next";
 import Image from "next/image";
+import Link from "next/link";
 
 
 export const metadata: Metadata = {
@@ -14,18 +15,20 @@ export default function RootLayout({ children }: { children: ReactNode }) {
     <html lang="en">
       <body className="min-h-screen bg-slate-900 text-slate-50 antialiased font-sans">
         <header className="p-4 flex gap-4 border-b border-slate-800">
-          <Image
-            src="/logo.png"
-            alt="BoardWar logo"
-            width={40}
-            height={40}
-            className="rounded-2xl shadow"
-          />
-            <nav>
-              <a href="/" className="hover:underline">Home</a>
-              <a href="/New-Game" className="ml-4 hover:underline">New Game</a>
-              <a href="/units" className="ml-4 hover:underline">Units</a>
-              <a href="/about" className="ml-4 hover:underline">About</a>
+          <div>
+            <Image
+              src="/logo.png"
+              alt="BoardWar logo"
+              width={50}
+              height={50}
+              className="rounded-2xl shadow"
+            />
+          </div>
+            <nav className="flex gap-4 text-sm text-slate-300 items-center">
+              <Link href="/">Home</Link>
+              <Link href="/game">New Game</Link>
+              <Link href="/units">Units</Link>
+              <Link href="/about">About</Link>
             </nav>
         </header>
 
