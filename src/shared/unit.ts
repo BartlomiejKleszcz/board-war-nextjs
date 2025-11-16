@@ -8,6 +8,7 @@ export interface UnitDto {
     defense: number;
     speed: number;
     cost: number;
+    uniqueId?: number
     position?: { x: number; y: number };
     playerId?: string;
 }
