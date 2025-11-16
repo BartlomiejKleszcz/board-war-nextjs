@@ -25,10 +25,10 @@ export default function RootLayout({ children }: { children: ReactNode }) {
             />
           </div>
             <nav className="flex gap-4 text-sm text-slate-300 items-center">
-              <Link href="/">Home</Link>
-              <Link href="/game">New Game</Link>
-              <Link href="/units">Units</Link>
-              <Link href="/about">About</Link>
+              <Link className="hover:text-white cursor-pointer" href="/">Home</Link>
+              <Link className="hover:text-white cursor-pointer" href="/new-game">New Game</Link>
+              <Link className="hover:text-white cursor-pointer" href="/units">Units</Link>
+              <Link className="hover:text-white cursor-pointer" href="/about">About</Link>
             </nav>
         </header>
 
