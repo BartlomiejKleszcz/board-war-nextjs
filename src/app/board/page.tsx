@@ -12,6 +12,7 @@ type OwnedUnit = UnitDto & {
   uniqueId: number;
   position: HexCoords | null;
   owner: "player" | "enemy";
+  color?: string;
 };
 
 type PathResult = {
@@ -50,16 +51,17 @@ export default function BoardPage() {
       setPhase(parsed.phase ?? "deployment");
       setActiveSide("player");
 
-      const toOwned = (list: UnitDto[], owner: "player" | "enemy"): OwnedUnit[] =>
+      const toOwned = (list: UnitDto[], owner: "player" | "enemy", color?: string): OwnedUnit[] =>
         list.map((u, idx) => ({
           ...u,
           uniqueId: u.uniqueId ?? idx + 1,
           position: (u as any).position ?? null,
           owner,
+          color,
         }));
 
-      setPlayerUnits(toOwned(parsed.playerArmy, "player"));
-      setEnemyUnits(toOwned(parsed.enemyArmy, "enemy"));
+      setPlayerUnits(toOwned(parsed.playerArmy, "player", (parsed.player as any)?.color));
+      setEnemyUnits(toOwned(parsed.enemyArmy, "enemy", (parsed.enemy as any)?.color));
     } catch (e: any) {
       setError(e?.message ?? "Failed to load game data.");
     } finally {
@@ -256,6 +258,18 @@ export default function BoardPage() {
     }
   }
 
+  const normalizeColor = (c?: string) => {
+    const low = (c ?? "").toLowerCase();
+    if (low.includes("red")) return "red";
+    if (low.includes("blue")) return "blue";
+    return "red";
+  };
+
+  function unitIconSrc(unit: OwnedUnit): string {
+    const color = normalizeColor(unit.color);
+    return `/units/${unit.id}-${color}.png`;
+  }
+
   function tileIcon(tile?: Tile): string {
     if (!tile) return "";
 
@@ -402,15 +416,25 @@ export default function BoardPage() {
     const movedSet = selectedUnit.owner === "player" ? nextMovedPlayer : nextMovedEnemy;
     const allMoved = unitsForSide.every((u) => movedSet.has(u.uniqueId));
     if (allMoved) {
-      const nextSide = activeSide === "player" ? "enemy" : "player";
-      const resetForNextRound = activeSide === "enemy";
-      setActiveSide(nextSide);
-      setSelectedUnitId(null);
-      setPathCoords([]);
-      if (resetForNextRound) {
-        setMoved({ player: new Set(), enemy: new Set() });
-      }
+      endTurnInternal();
     }
+  }
+
+  function endTurnInternal() {
+    const nextSide = activeSide === "player" ? "enemy" : "player";
+    const resetForNextRound = activeSide === "enemy";
+    setActiveSide(nextSide);
+    setSelectedUnitId(null);
+    setPathCoords([]);
+    setError(null);
+    setMoved((prev) => {
+      if (resetForNextRound) {
+        return { player: new Set(), enemy: new Set() };
+      }
+      return nextSide === "enemy"
+        ? { player: prev.player, enemy: new Set() }
+        : { player: new Set(), enemy: prev.enemy };
+    });
   }
 
   if (isLoading) {
@@ -511,7 +535,7 @@ export default function BoardPage() {
                           }`}
                         >
                           <img
-                            src={`/units/${occupant.id}.png`}
+                            src={unitIconSrc(occupant)}
                             alt={occupant.name}
                             className="w-8 h-8 object-contain drop-shadow-md"
                           />
@@ -559,7 +583,7 @@ export default function BoardPage() {
                       <div>
                         <div className="text-sm font-semibold flex items-center gap-2">
                           <img
-                            src={`/units/${unit.id}.png`}
+                            src={unitIconSrc(unit)}
                             alt={unit.name}
                             className="w-5 h-5 object-contain"
                           />
@@ -584,6 +608,16 @@ export default function BoardPage() {
                   );
                 })}
             </div>
+
+            {phase === "battle" && (
+              <button
+                type="button"
+                onClick={endTurnInternal}
+                className="w-full rounded-lg bg-slate-700 hover:bg-slate-600 text-slate-100 py-2 text-sm font-medium"
+              >
+                End turn
+              </button>
+            )}
           </aside>
         </div>
       )}
