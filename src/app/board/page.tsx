@@ -27,6 +27,8 @@ export default function BoardPage() {
   const [enemyUnits, setEnemyUnits] = useState<OwnedUnit[]>([]);
   const [phase, setPhase] = useState<Game["phase"]>("deployment");
   const [activeSide, setActiveSide] = useState<"player" | "enemy">("player");
+  const [playerColor, setPlayerColor] = useState<string>("red");
+  const [enemyColor, setEnemyColor] = useState<string>("blue");
   const [selectedUnitId, setSelectedUnitId] = useState<number | null>(null);
   const [pathCoords, setPathCoords] = useState<HexCoords[]>([]);
   const [error, setError] = useState<string | null>(null);
@@ -50,6 +52,10 @@ export default function BoardPage() {
       setGameId(parsed.id);
       setPhase(parsed.phase ?? "deployment");
       setActiveSide("player");
+      const playerC = canonicalColor((parsed.player as any)?.color, "red");
+      const enemyC = playerC === "red" ? "blue" : "red";
+      setPlayerColor(playerC);
+      setEnemyColor(enemyC);
 
       const toOwned = (list: UnitDto[], owner: "player" | "enemy", color?: string): OwnedUnit[] =>
         list.map((u, idx) => ({
@@ -258,16 +264,31 @@ export default function BoardPage() {
     }
   }
 
-  const normalizeColor = (c?: string) => {
-    const low = (c ?? "").toLowerCase();
-    if (low.includes("red")) return "red";
+  const ICON_NAME: Record<string, string> = {
+    "twelve-pounder-cannon": "12-pounder-cannon",
+    "six-pounder-cannon": "6-pounder-cannon",
+  };
+
+  const canonicalColor = (value: string | undefined, fallback: "red" | "blue"): "red" | "blue" => {
+    const low = (value ?? "").toLowerCase();
     if (low.includes("blue")) return "blue";
-    return "red";
+    if (low.includes("red")) return "red";
+    return fallback;
+  };
+
+  const normalizeColor = (c: string | undefined, owner: "player" | "enemy") => {
+    return canonicalColor(c, owner === "enemy" ? "blue" : "red");
   };
 
   function unitIconSrc(unit: OwnedUnit): string {
-    const color = normalizeColor(unit.color);
-    return `/units/${unit.id}-${color}.png`;
+    const baseColor = unit.owner === "player" ? playerColor : enemyColor;
+    const color = normalizeColor(baseColor ?? unit.color, unit.owner);
+    const baseName = ICON_NAME[unit.id] ?? unit.id;
+    // handle known blue typo for howitzer
+    if (unit.id === "howitzer-cannon" && color === "blue") {
+      return `/units/howitze-cannon-blue.png`;
+    }
+    return `/units/${baseName}-${color}.png`;
   }
 
   function tileIcon(tile?: Tile): string {
