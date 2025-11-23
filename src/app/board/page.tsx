@@ -14,9 +14,9 @@ type OwnedUnit = UnitDto & {
   owner: "player" | "enemy";
 };
 
-type RoadResponse = {
-  movementCost: number;
-  road: Tile[];
+type PathResult = {
+  cost: number;
+  path: HexCoords[];
 };
 
 export default function BoardPage() {
@@ -35,12 +35,12 @@ export default function BoardPage() {
     enemy: new Set(),
   }));
 
-  // wczytaj grę z sessionStorage (tworzoną po zbudowaniu armii)
+  // load game from sessionStorage (created after building the army)
   useEffect(() => {
     try {
       const raw = typeof window !== "undefined" ? sessionStorage.getItem("currentGame") : null;
       if (!raw) {
-        setError("Brak aktywnej gry. Wróć do /army i zapisz armię.");
+        setError("No active game. Go back to /army and save an army.");
         setIsLoading(false);
         return;
       }
@@ -61,7 +61,7 @@ export default function BoardPage() {
       setPlayerUnits(toOwned(parsed.playerArmy, "player"));
       setEnemyUnits(toOwned(parsed.enemyArmy, "enemy"));
     } catch (e: any) {
-      setError(e?.message ?? "Nie udało się wczytać gry.");
+      setError(e?.message ?? "Failed to load game data.");
     } finally {
       setIsLoading(false);
     }
@@ -130,9 +130,103 @@ export default function BoardPage() {
         body: JSON.stringify({ q: coords.q, r: coords.r }),
       });
     } catch {
-      // backend ma luki w walidacji zajętości pól; ignorujemy błędy i trzymamy stan lokalnie
+      // backend does not strictly validate tile occupancy; keep local state authoritative
     }
   }
+
+  const getNeighbors = useCallback(
+    (coords: HexCoords): HexCoords[] => {
+      const dirs = [
+        { q: 1, r: 0 },
+        { q: -1, r: 0 },
+        { q: 0, r: 1 },
+        { q: 0, r: -1 },
+      ];
+      return dirs
+        .map(({ q, r }) => ({ q: coords.q + q, r: coords.r + r }))
+        .filter((c) => tileByCoord.has(`${c.q},${c.r}`));
+    },
+    [tileByCoord]
+  );
+
+  const findPath = useCallback(
+    (start: HexCoords, target: HexCoords, blocked: Set<string>, maxCost: number): PathResult | null => {
+      const startKey = `${start.q},${start.r}`;
+      const targetKey = `${target.q},${target.r}`;
+
+      type Node = { key: string; coords: HexCoords; cost: number };
+      const dist = new Map<string, number>();
+      const prev = new Map<string, string | null>();
+      const queue: Node[] = [{ key: startKey, coords: start, cost: 0 }];
+      dist.set(startKey, 0);
+      prev.set(startKey, null);
+
+      const popSmallest = () => {
+        queue.sort((a, b) => a.cost - b.cost);
+        return queue.shift();
+      };
+
+      while (queue.length) {
+        const current = popSmallest();
+        if (!current) break;
+
+        for (const n of getNeighbors(current.coords)) {
+          const key = `${n.q},${n.r}`;
+          if (blocked.has(key)) continue;
+          const tile = tileByCoord.get(key);
+          if (!tile || !tile.passable) continue;
+          const tentative = current.cost + tile.movementCost;
+          if (tentative > maxCost) continue;
+          const known = dist.get(key);
+          if (known == null || tentative < known) {
+            dist.set(key, tentative);
+            prev.set(key, current.key);
+            queue.push({ key, coords: n, cost: tentative });
+          }
+        }
+      }
+
+      if (!dist.size) return null;
+
+      const reachableTargetCost = dist.get(targetKey);
+      let bestKey: string | null = null;
+      let bestCost = Infinity;
+      let bestHeuristic = Infinity;
+
+      dist.forEach((cost, key) => {
+        if (cost > maxCost) return;
+        const [q, r] = key.split(",").map(Number);
+        const heuristic = Math.abs(q - target.q) + Math.abs(r - target.r);
+        if (key === targetKey) {
+          bestKey = key;
+          bestCost = cost;
+          bestHeuristic = heuristic;
+          return;
+        }
+        if (
+          reachableTargetCost === undefined &&
+          (heuristic < bestHeuristic || (heuristic === bestHeuristic && cost < bestCost))
+        ) {
+          bestKey = key;
+          bestCost = cost;
+          bestHeuristic = heuristic;
+        }
+      });
+
+      if (!bestKey) return null;
+
+      const path: HexCoords[] = [];
+      let k: string | null = bestKey;
+      while (k) {
+        const [q, r] = k.split(",").map(Number);
+        path.push({ q, r });
+        k = prev.get(k) ?? null;
+      }
+
+      return { cost: bestCost, path: path.reverse() };
+    },
+    [getNeighbors, tileByCoord]
+  );
 
   function tileClass(tile?: Tile): string {
     if (!tile) {
@@ -167,11 +261,11 @@ export default function BoardPage() {
 
     switch (tile.terrain) {
       case "city":
-        return "🏰";
+        return "C";
       case "bridge":
-        return "🌉";
+        return "B";
       case "ford":
-        return "🛶";
+        return "F";
       default:
         return "";
     }
@@ -193,11 +287,11 @@ export default function BoardPage() {
       const unit = playerUnits.find((u) => u.uniqueId === unitId);
       if (!unit) return;
       if (!allowedDeployColumns.has(coords.q)) {
-        setError("Jednostki gracza można ustawić tylko w pierwszych 3 kolumnach.");
+        setError("You can deploy player units only in the first 3 columns.");
         return;
       }
       if (!canDropOnTile(coords.q, coords.r)) {
-        setError("Pole jest zajęte lub nieprzechodnie.");
+        setError("Tile is occupied or impassable.");
         return;
       }
       setError(null);
@@ -223,7 +317,7 @@ export default function BoardPage() {
     const maxQ = columns[columns.length - 1];
     const deployComplete = playerUnits.every((u) => u.position);
     if (!deployComplete) {
-      setError("Najpierw rozstaw wszystkie jednostki gracza.");
+      setError("Place all player units before continuing.");
       return;
     }
     const updatedEnemy = enemyUnits.map((enemyUnit, idx) => {
@@ -233,7 +327,7 @@ export default function BoardPage() {
         q: mirroredQ(source.position.q),
         r: source.position.r,
       };
-      // upewniamy się, że mieści się w prawej stronie planszy
+      // clamp to board bounds on the mirrored side
       const clampedQ = Math.max(minQ, Math.min(maxQ, mirrored.q));
       return { ...enemyUnit, position: { q: clampedQ, r: mirrored.r } };
     });
@@ -260,47 +354,53 @@ export default function BoardPage() {
   async function handleMoveTo(q: number, r: number) {
     if (phase !== "battle" || !selectedUnit || !selectedUnit.position) return;
     if (selectedUnit.owner !== activeSide) return;
-    if (!canDropOnTile(q, r) && !(selectedUnit.position.q === q && selectedUnit.position.r === r)) {
-      setError("Pole jest zajęte lub nieprzechodnie.");
+
+    const start = selectedUnit.position;
+    const blocked = new Set<string>();
+    occupiedMap.forEach((u, key) => {
+      if (u.uniqueId !== selectedUnit.uniqueId) {
+        blocked.add(key);
+      }
+    });
+
+    const pathResult = findPath(start, { q, r }, blocked, selectedUnit.speed);
+    if (!pathResult || pathResult.path.length === 0) {
+      setError("No reachable path within movement points.");
+      return;
+    }
+
+    const destination = pathResult.path[pathResult.path.length - 1];
+    if (destination.q === start.q && destination.r === start.r && (q !== start.q || r !== start.r)) {
+      setError("No reachable path within movement points.");
+      setPathCoords([]);
+      return;
+    }
+    const destKey = `${destination.q},${destination.r}`;
+    const occupantAtDest = occupiedMap.get(destKey);
+    if (occupantAtDest && occupantAtDest.uniqueId !== selectedUnit.uniqueId) {
+      setError("Destination is occupied.");
       return;
     }
 
     setError(null);
-    const current = selectedUnit.position;
-    const res = await fetch("http://localhost:3000/board/move", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        currentPosition: { q: current.q, r: current.r },
-        targetCoords: { q, r },
-      }),
-    });
-
-    if (!res.ok) {
-      setError("Nie udało się policzyć ścieżki.");
-      return;
-    }
-
-    const data = (await res.json()) as RoadResponse;
-    const roadCoords = data?.road?.map((t) => t.coords) ?? [];
-    setPathCoords(roadCoords);
+    setPathCoords(pathResult.path);
 
     const updateFn = selectedUnit.owner === "player" ? setPlayerUnits : setEnemyUnits;
     updateFn((prev) =>
-      prev.map((u) => (u.uniqueId === selectedUnit.uniqueId ? { ...u, position: { q, r } } : u))
+      prev.map((u) =>
+        u.uniqueId === selectedUnit.uniqueId ? { ...u, position: destination } : u
+      )
     );
-    await setUnitPositionOnBackend(selectedUnit.uniqueId, { q, r });
+    await setUnitPositionOnBackend(selectedUnit.uniqueId, destination);
 
-    setMoved((prev) => {
-      const nextPlayer = new Set(prev.player);
-      const nextEnemy = new Set(prev.enemy);
-      (selectedUnit.owner === "player" ? nextPlayer : nextEnemy).add(selectedUnit.uniqueId);
-      return { player: nextPlayer, enemy: nextEnemy };
-    });
+    const nextMovedPlayer = new Set(moved.player);
+    const nextMovedEnemy = new Set(moved.enemy);
+    (selectedUnit.owner === "player" ? nextMovedPlayer : nextMovedEnemy).add(selectedUnit.uniqueId);
+    setMoved({ player: nextMovedPlayer, enemy: nextMovedEnemy });
 
-    const movedSet = selectedUnit.owner === "player" ? moved.player : moved.enemy;
     const unitsForSide = selectedUnit.owner === "player" ? playerUnits : enemyUnits;
-    const allMoved = unitsForSide.every((u) => movedSet.has(u.uniqueId) || u.uniqueId === selectedUnit.uniqueId);
+    const movedSet = selectedUnit.owner === "player" ? nextMovedPlayer : nextMovedEnemy;
+    const allMoved = unitsForSide.every((u) => movedSet.has(u.uniqueId));
     if (allMoved) {
       const nextSide = activeSide === "player" ? "enemy" : "player";
       const resetForNextRound = activeSide === "enemy";
@@ -315,9 +415,7 @@ export default function BoardPage() {
 
   if (isLoading) {
     return (
-      <div className="p-6 text-slate-200">
-        Ładowanie planszy...
-      </div>
+      <div className="p-6 text-slate-200">Loading board...</div>
     );
   }
 
@@ -335,8 +433,8 @@ export default function BoardPage() {
         <div>
           <h1 className="text-2xl font-semibold">Board</h1>
           <p className="text-sm text-slate-300">
-            Faza: {phase === "deployment" ? "Rozstawianie" : "Bitwa"} | Tura:{" "}
-            {activeSide === "player" ? "Gracz" : "Przeciwnik"}
+            Phase: {phase === "deployment" ? "Deployment" : "Battle"} | Turn:{" "}
+            {activeSide === "player" ? "Player" : "Enemy"}
           </p>
         </div>
         {phase === "deployment" && (
@@ -346,7 +444,7 @@ export default function BoardPage() {
             className="rounded-lg bg-emerald-600 hover:bg-emerald-500 px-4 py-2 text-white text-sm disabled:opacity-50"
             disabled={!playerUnits.every((u) => u.position)}
           >
-            Dalej (ustaw przeciwnika)
+            Continue (mirror enemy)
           </button>
         )}
       </div>
@@ -402,19 +500,21 @@ export default function BoardPage() {
                       title={
                         tile
                           ? `q=${tile.coords.q}, r=${tile.coords.r}, terrain=${tile.terrain}`
-                          : `q=${q}, r=${r} (brak kafla)`
+                          : `q=${q}, r=${r} (no tile data)`
                       }
                     >
                       {tileIcon(tile)}
                       {occupant && (
                         <div
-                          className={`absolute inset-0 rounded-md bg-black/25 flex items-center justify-center px-1 text-center text-[10px] ${
+                          className={`absolute inset-0 rounded-md bg-black/25 flex items-center justify-center px-1 text-center ${
                             occupant.owner === "player" ? "text-red-100" : "text-blue-100"
                           }`}
                         >
-                          <span className="font-semibold">
-                            {occupant.name.slice(0, 2).toUpperCase()}
-                          </span>
+                          <img
+                            src={`/units/${occupant.id}.png`}
+                            alt={occupant.name}
+                            className="w-8 h-8 object-contain drop-shadow-md"
+                          />
                         </div>
                       )}
                     </div>
@@ -426,11 +526,11 @@ export default function BoardPage() {
 
           <aside className="rounded-xl border border-slate-800 bg-slate-900/60 p-4 space-y-4">
             <div>
-              <h2 className="text-lg font-semibold text-slate-100">Panel jednostek</h2>
+              <h2 className="text-lg font-semibold text-slate-100">Units panel</h2>
               <p className="text-sm text-slate-400">
                 {phase === "deployment"
-                  ? "Przeciągnij jednostki na 3 pierwsze kolumny po lewej."
-                  : `Aktywna strona: ${activeSide === "player" ? "gracz" : "przeciwnik"}. Kliknij jednostkę, potem pole docelowe.`}
+                  ? "Drag player units onto the first 3 columns on the left."
+                  : `Active side: ${activeSide === "player" ? "player" : "enemy"}. Click a unit then a destination tile.`}
               </p>
             </div>
 
@@ -457,15 +557,28 @@ export default function BoardPage() {
                       onClick={() => selectUnit(unit)}
                     >
                       <div>
-                        <div className="text-sm font-semibold">{unit.name}</div>
+                        <div className="text-sm font-semibold flex items-center gap-2">
+                          <img
+                            src={`/units/${unit.id}.png`}
+                            alt={unit.name}
+                            className="w-5 h-5 object-contain"
+                          />
+                          <span>{unit.name}</span>
+                        </div>
                         <div className="text-[11px] text-slate-300">
                           {unit.position
                             ? `q=${unit.position.q}, r=${unit.position.r}`
-                            : "nieustawiona"}
+                            : "not placed"}
                         </div>
                       </div>
                       <div className="text-[11px] text-slate-200">
-                        {phase === "battle" ? (hasMoved ? "ruch wykonany" : "gotowa") : "deploy"}
+                        {phase === "battle"
+                          ? hasMoved
+                            ? "moved"
+                            : "ready"
+                          : unit.position
+                          ? "placed"
+                          : "deploy"}
                       </div>
                     </div>
                   );
@@ -476,9 +589,9 @@ export default function BoardPage() {
       )}
 
       <p className="text-xs text-slate-400">
-        Rozstawienie: gracz może przeciągać jednostki tylko na pierwsze 3 kolumny. Po "Dalej"
-        przeciwnik jest ustawiany lustrzanie po prawej. W bitwie: kliknięcie jednostki, potem pola
-        na planszy rysuje ścieżkę i przesuwa ją; po ruchu wszystkich jednostek tura zmienia się.
+        Deployment: drag player units only onto the first 3 columns. After "Continue" the enemy is
+        mirrored on the right. In battle: click a unit, then a tile; a path is drawn and the unit
+        moves as far as its movement points allow. Turns swap after all units on a side move.
       </p>
     </div>
   );

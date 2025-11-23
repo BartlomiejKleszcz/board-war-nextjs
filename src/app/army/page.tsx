@@ -20,7 +20,7 @@ export default function ArmyPage() {
 
   useEffect(() => {
     if (!playerId) {
-      setError("Brak playerId w query params. Otwórz /army przez formularz New Game.");
+      setError("Missing playerId query param. Open /army via the New Game form.");
       setIsLoading(false);
       return;
     }
@@ -63,9 +63,7 @@ export default function ArmyPage() {
 
   if (isLoading) {
     return (
-      <div className="p-6 text-slate-200">
-        Ładowanie danych armii...
-      </div>
+      <div className="p-6 text-slate-200">Loading army data...</div>
     );
   }
 
@@ -79,9 +77,7 @@ export default function ArmyPage() {
 
   if (!player || !units) {
     return (
-      <div className="p-6 text-red-400">
-        Brak danych gracza lub jednostek.
-      </div>
+      <div className="p-6 text-red-400">Missing player or unit data.</div>
     );
   }
 

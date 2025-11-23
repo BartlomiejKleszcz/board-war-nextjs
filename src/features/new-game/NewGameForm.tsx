@@ -27,7 +27,7 @@ export default function NewGameForm() {
       const color = formData.get("color") as "RED" | "BLUE" | null;
 
       if (!playerName || !color) {
-        setError("Uzupełnij imię i wybierz kolor.");
+        setError("Enter a name and choose a color.");
         setIsSubmitting(false);
         return;
       }
@@ -52,7 +52,7 @@ export default function NewGameForm() {
 
       router.push(`/army?playerId=${player.id}`);
     } catch (e) {
-      setError("Nie udało się stworzyć gracza.");
+      setError("Failed to create player.");
     } finally {
       setIsSubmitting(false);
     }
