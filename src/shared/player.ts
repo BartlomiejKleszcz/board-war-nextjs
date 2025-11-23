@@ -4,6 +4,6 @@ export interface Player {
     id: number
     name: string
     color: string
-    units: [UnitDto]
+    units: UnitDto[]
     budget: number
 }

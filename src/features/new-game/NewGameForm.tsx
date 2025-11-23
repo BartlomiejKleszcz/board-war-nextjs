@@ -50,7 +50,7 @@ export default function NewGameForm() {
 
       const player: Player = await res.json();
 
-      router.push(`/game/army?playerId=${player.id}`);
+      router.push(`/army?playerId=${player.id}`);
     } catch (e) {
       setError("Nie udało się stworzyć gracza.");
     } finally {

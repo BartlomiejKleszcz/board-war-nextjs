@@ -1,44 +1,89 @@
 // src/app/army/page.tsx
 
+"use client";
+
+import { useEffect, useState } from "react";
+import { useSearchParams } from "next/navigation";
+
 import ArmyBuilder from "@/features/army/ArmyBuilder";
 import type { Player } from "@/shared/player";
 import type { UnitDto } from "@/shared/unit";
 
-type ArmyPageProps = {
-  searchParams?: {
-    playerId?: string;
-  };
-};
+export default function ArmyPage() {
+  const searchParams = useSearchParams();
+  const playerId = searchParams.get("playerId");
 
-export default async function ArmyPage({ searchParams }: ArmyPageProps) {
-  const playerId = searchParams?.playerId;
+  const [player, setPlayer] = useState<Player | null>(null);
+  const [units, setUnits] = useState<UnitDto[] | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [isLoading, setIsLoading] = useState(true);
 
-  if (!playerId) {
-    throw new Error("Missing playerId in query params. Go back to New Game.");
+  useEffect(() => {
+    if (!playerId) {
+      setError("Brak playerId w query params. Otwórz /army przez formularz New Game.");
+      setIsLoading(false);
+      return;
+    }
+
+    async function loadData() {
+      try {
+        setIsLoading(true);
+        setError(null);
+
+        const [unitsRes, playerRes] = await Promise.all([
+          fetch("http://localhost:3000/units", {
+            cache: "no-store",
+          }),
+          fetch(`http://localhost:3000/players/${playerId}`, {
+            cache: "no-store",
+          }),
+        ]);
+
+        if (!unitsRes.ok) {
+          throw new Error(`Failed to fetch units. Status: ${unitsRes.status}`);
+        }
+        if (!playerRes.ok) {
+          throw new Error(`Failed to fetch player. Status: ${playerRes.status}`);
+        }
+
+        const unitsJson = (await unitsRes.json()) as UnitDto[];
+        const playerJson = (await playerRes.json()) as Player;
+
+        setUnits(unitsJson);
+        setPlayer(playerJson);
+      } catch (e: any) {
+        setError(e?.message ?? "Unknown error while loading army data");
+      } finally {
+        setIsLoading(false);
+      }
+    }
+
+    loadData();
+  }, [playerId]);
+
+  if (isLoading) {
+    return (
+      <div className="p-6 text-slate-200">
+        Ładowanie danych armii...
+      </div>
+    );
   }
 
-  // 1. Jednostki
-  const unitsRes = await fetch("http://localhost:3000/units", {
-    cache: "no-store",
-  });
-
-  if (!unitsRes.ok) {
-    throw new Error("Failed to fetch units");
+  if (error) {
+    return (
+      <div className="p-6 text-red-400">
+        {error}
+      </div>
+    );
   }
 
-  const units = (await unitsRes.json()) as UnitDto[];
-
-  // 2. Gracz
-  const playerRes = await fetch(`http://localhost:3000/player/${playerId}`, {
-    cache: "no-store",
-  });
-
-  if (!playerRes.ok) {
-    throw new Error("That player doesn't exist");
+  if (!player || !units) {
+    return (
+      <div className="p-6 text-red-400">
+        Brak danych gracza lub jednostek.
+      </div>
+    );
   }
-
-  // TU JEST KLUCZ:
-  const player = (await playerRes.json()) as Player; // NIE Promise<Player>
 
   return (
     <div className="p-6 max-w-5xl mx-auto">
