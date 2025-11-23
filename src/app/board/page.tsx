@@ -21,6 +21,12 @@ type PathResult = {
   path: HexCoords[];
 };
 
+type DamageMarker = {
+  id: string;
+  coords: HexCoords;
+  amount: number;
+};
+
 export default function BoardPage() {
   const [board, setBoard] = useState<Board | null>(null);
   const [gameId, setGameId] = useState<number | null>(null);
@@ -38,11 +44,13 @@ export default function BoardPage() {
     player: new Set(),
     enemy: new Set(),
   }));
+  const [damageMarkers, setDamageMarkers] = useState<DamageMarker[]>([]);
   const mapRef = useRef<HTMLDivElement | null>(null);
   const [isPanning, setIsPanning] = useState(false);
   const panStart = useRef<{ x: number; y: number; scrollLeft: number; scrollTop: number } | null>(
     null
   );
+  const panMoved = useRef(false);
 
   // load game from sessionStorage (created after building the army)
   useEffect(() => {
@@ -324,6 +332,14 @@ export default function BoardPage() {
     return !occupiedMap.has(`${q},${r}`);
   }
 
+  function centerOnSide(side: "player" | "enemy") {
+    const container = mapRef.current;
+    if (!container) return;
+    const maxScrollLeft = container.scrollWidth - container.clientWidth;
+    const target = side === "player" ? 0 : Math.max(0, maxScrollLeft);
+    container.scrollTo({ left: target, behavior: "smooth" });
+  }
+
   const placeUnit = useCallback(
     async (unitId: number, coords: HexCoords) => {
       if (phase !== "deployment") return;
@@ -493,6 +509,18 @@ export default function BoardPage() {
       );
     };
 
+    setDamageMarkers((prev) => [
+      ...prev,
+      {
+        id: `${target.uniqueId}-${Date.now()}`,
+        coords: target.position ?? { q: 0, r: 0 },
+        amount: damage,
+      },
+    ]);
+    setTimeout(() => {
+      setDamageMarkers((prev) => prev.slice(1));
+    }, 900);
+
     if (target.owner === "player") {
       applyDamage(playerUnits, setPlayerUnits);
     } else {
@@ -516,6 +544,7 @@ export default function BoardPage() {
     const nextSide = activeSide === "player" ? "enemy" : "player";
     const resetForNextRound = activeSide === "enemy";
     setActiveSide(nextSide);
+    centerOnSide(nextSide);
     setSelectedUnitId(null);
     setPathCoords([]);
     setError(null);
@@ -544,7 +573,7 @@ export default function BoardPage() {
   }
 
   return (
-    <div className="p-6 max-w-6xl mx-auto space-y-4">
+    <div className="p-6 max-w-8xl mx-auto space-y-4">
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-2xl font-semibold">Board</h1>
@@ -645,6 +674,7 @@ export default function BoardPage() {
               const container = mapRef.current;
               if (!container) return;
               setIsPanning(true);
+              panMoved.current = false;
               panStart.current = {
                 x: e.clientX,
                 y: e.clientY,
@@ -657,6 +687,9 @@ export default function BoardPage() {
               e.preventDefault();
               const deltaX = e.clientX - panStart.current.x;
               const deltaY = e.clientY - panStart.current.y;
+              if (Math.abs(deltaX) > 2 || Math.abs(deltaY) > 2) {
+                panMoved.current = true;
+              }
               mapRef.current.scrollLeft = panStart.current.scrollLeft - deltaX;
               mapRef.current.scrollTop = panStart.current.scrollTop - deltaY;
             }}
@@ -667,6 +700,7 @@ export default function BoardPage() {
             onMouseLeave={() => {
               setIsPanning(false);
               panStart.current = null;
+              panMoved.current = false;
             }}
           >
             <div
@@ -691,6 +725,10 @@ export default function BoardPage() {
                       key={`${q},${r}`}
                       draggable={false}
                       onClick={() => {
+                        if (panMoved.current) {
+                          panMoved.current = false;
+                          return;
+                        }
                         if (occupant) {
                           if (selectedUnit && occupant.owner !== selectedUnit.owner) {
                             void handleAttack(occupant);
@@ -720,18 +758,41 @@ export default function BoardPage() {
                     >
                       {tileIcon(tile)}
                       {occupant && (
-                        <div
-                          className={`absolute inset-0 rounded-md bg-black/25 flex items-center justify-center px-1 text-center ${
-                            occupant.owner === "player" ? "text-red-100" : "text-blue-100"
-                          }`}
-                        >
-                          <img
-                            src={unitIconSrc(occupant)}
-                            alt={occupant.name}
-                            className="w-8 h-8 object-contain drop-shadow-md"
-                          />
-                        </div>
+                        <>
+                          <div className="absolute top-1 left-1 right-1 h-1 rounded-full bg-black/50 overflow-hidden border border-slate-900/60">
+                            <div
+                              className="h-full bg-emerald-400"
+                              style={{
+                                width: `${Math.max(
+                                  0,
+                                  Math.min(100, (occupant.currentHp / occupant.maxHp) * 100)
+                                )}%`,
+                              }}
+                            />
+                          </div>
+                          <div
+                            className={`absolute inset-0 rounded-md bg-black/25 flex items-center justify-center px-1 text-center ${
+                              occupant.owner === "player" ? "text-red-100" : "text-blue-100"
+                            }`}
+                          >
+                            <img
+                              src={unitIconSrc(occupant)}
+                              alt={occupant.name}
+                              className="w-8 h-8 object-contain drop-shadow-md"
+                            />
+                          </div>
+                        </>
                       )}
+                      {damageMarkers
+                        .filter((m) => m.coords.q === q && m.coords.r === r)
+                        .map((m) => (
+                          <div
+                            key={m.id}
+                            className="absolute -top-6 left-1/2 -translate-x-1/2 text-xs font-bold text-red-300 animate-bounce"
+                          >
+                            -{m.amount}
+                          </div>
+                        ))}
                     </div>
                   );
                 })
