@@ -2,7 +2,7 @@
 
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { DragEvent } from "react";
 import type { Board, HexCoords, Tile } from "@/shared/board";
 import type { Game } from "@/shared/game";
@@ -13,6 +13,7 @@ type OwnedUnit = UnitDto & {
   position: HexCoords | null;
   owner: "player" | "enemy";
   color?: string;
+  currentHp: number;
 };
 
 type PathResult = {
@@ -33,10 +34,15 @@ export default function BoardPage() {
   const [pathCoords, setPathCoords] = useState<HexCoords[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(true);
-  const [moved, setMoved] = useState<{ player: Set<number>; enemy: Set<number> }>(() => ({
+  const [acted, setActed] = useState<{ player: Set<number>; enemy: Set<number> }>(() => ({
     player: new Set(),
     enemy: new Set(),
   }));
+  const mapRef = useRef<HTMLDivElement | null>(null);
+  const [isPanning, setIsPanning] = useState(false);
+  const panStart = useRef<{ x: number; y: number; scrollLeft: number; scrollTop: number } | null>(
+    null
+  );
 
   // load game from sessionStorage (created after building the army)
   useEffect(() => {
@@ -64,6 +70,7 @@ export default function BoardPage() {
           position: (u as any).position ?? null,
           owner,
           color,
+          currentHp: (u as any).currentHp ?? u.maxHp,
         }));
 
       setPlayerUnits(toOwned(parsed.playerArmy, "player", (parsed.player as any)?.color));
@@ -126,8 +133,6 @@ export default function BoardPage() {
     () => [...playerUnits, ...enemyUnits].find((u) => u.uniqueId === selectedUnitId) ?? null,
     [playerUnits, enemyUnits, selectedUnitId]
   );
-
-  const allUnits = useMemo(() => [...playerUnits, ...enemyUnits], [playerUnits, enemyUnits]);
 
   async function setUnitPositionOnBackend(unitId: number, coords: HexCoords) {
     if (!gameId) return;
@@ -235,6 +240,9 @@ export default function BoardPage() {
     },
     [getNeighbors, tileByCoord]
   );
+
+  const distance = (a: HexCoords, b: HexCoords) =>
+    Math.abs(a.q - b.q) + Math.abs(a.r - b.r);
 
   function tileClass(tile?: Tile): string {
     if (!tile) {
@@ -374,7 +382,7 @@ export default function BoardPage() {
     }
     setPhase("battle");
     setActiveSide("player");
-    setMoved({ player: new Set(), enemy: new Set() });
+    setActed({ player: new Set(), enemy: new Set() });
     setSelectedUnitId(null);
     setPathCoords([]);
   }
@@ -389,6 +397,11 @@ export default function BoardPage() {
   async function handleMoveTo(q: number, r: number) {
     if (phase !== "battle" || !selectedUnit || !selectedUnit.position) return;
     if (selectedUnit.owner !== activeSide) return;
+    const actedSet = selectedUnit.owner === "player" ? acted.player : acted.enemy;
+    if (actedSet.has(selectedUnit.uniqueId)) {
+      setError("This unit already acted this turn.");
+      return;
+    }
 
     const start = selectedUnit.position;
     const blocked = new Set<string>();
@@ -428,15 +441,73 @@ export default function BoardPage() {
     );
     await setUnitPositionOnBackend(selectedUnit.uniqueId, destination);
 
-    const nextMovedPlayer = new Set(moved.player);
-    const nextMovedEnemy = new Set(moved.enemy);
-    (selectedUnit.owner === "player" ? nextMovedPlayer : nextMovedEnemy).add(selectedUnit.uniqueId);
-    setMoved({ player: nextMovedPlayer, enemy: nextMovedEnemy });
+    const nextActedPlayer = new Set(acted.player);
+    const nextActedEnemy = new Set(acted.enemy);
+    (selectedUnit.owner === "player" ? nextActedPlayer : nextActedEnemy).add(selectedUnit.uniqueId);
+    setActed({ player: nextActedPlayer, enemy: nextActedEnemy });
 
     const unitsForSide = selectedUnit.owner === "player" ? playerUnits : enemyUnits;
-    const movedSet = selectedUnit.owner === "player" ? nextMovedPlayer : nextMovedEnemy;
-    const allMoved = unitsForSide.every((u) => movedSet.has(u.uniqueId));
-    if (allMoved) {
+    const actedSetCurrent = selectedUnit.owner === "player" ? nextActedPlayer : nextActedEnemy;
+    const allActed = unitsForSide.every((u) => actedSetCurrent.has(u.uniqueId));
+    if (allActed) {
+      endTurnInternal();
+    }
+  }
+
+  async function handleAttack(target: OwnedUnit) {
+    if (phase !== "battle" || !selectedUnit || !selectedUnit.position) return;
+    if (selectedUnit.owner !== activeSide) return;
+    if (target.owner === selectedUnit.owner) {
+      setSelectedUnitId(target.uniqueId);
+      return;
+    }
+    const actedSet = selectedUnit.owner === "player" ? acted.player : acted.enemy;
+    if (actedSet.has(selectedUnit.uniqueId)) {
+      setError("This unit already acted this turn.");
+      return;
+    }
+    const dist = distance(selectedUnit.position, target.position ?? { q: 0, r: 0 });
+    if (dist > selectedUnit.attackRange) {
+      setError("Target out of range.");
+      return;
+    }
+    const isRanged = dist > 1 && selectedUnit.rangedAttack > 0;
+    const damage = isRanged ? selectedUnit.rangedAttack : selectedUnit.meleeAttack;
+    if (damage <= 0) {
+      setError("This unit cannot deal damage.");
+      return;
+    }
+
+    setError(null);
+    setPathCoords([]);
+
+    const applyDamage = (units: OwnedUnit[], setter: typeof setPlayerUnits) => {
+      setter((prev) =>
+        prev
+          .map((u) =>
+            u.uniqueId === target.uniqueId
+              ? { ...u, currentHp: Math.max(0, u.currentHp - damage) }
+              : u
+          )
+          .filter((u) => u.currentHp > 0)
+      );
+    };
+
+    if (target.owner === "player") {
+      applyDamage(playerUnits, setPlayerUnits);
+    } else {
+      applyDamage(enemyUnits, setEnemyUnits);
+    }
+
+    const nextActedPlayer = new Set(acted.player);
+    const nextActedEnemy = new Set(acted.enemy);
+    (selectedUnit.owner === "player" ? nextActedPlayer : nextActedEnemy).add(selectedUnit.uniqueId);
+    setActed({ player: nextActedPlayer, enemy: nextActedEnemy });
+
+    const unitsForSide = selectedUnit.owner === "player" ? playerUnits : enemyUnits;
+    const actedSetCurrent = selectedUnit.owner === "player" ? nextActedPlayer : nextActedEnemy;
+    const allActed = unitsForSide.every((u) => actedSetCurrent.has(u.uniqueId));
+    if (allActed) {
       endTurnInternal();
     }
   }
@@ -448,7 +519,7 @@ export default function BoardPage() {
     setSelectedUnitId(null);
     setPathCoords([]);
     setError(null);
-    setMoved((prev) => {
+    setActed((prev) => {
       if (resetForNextRound) {
         return { player: new Set(), enemy: new Set() };
       }
@@ -501,8 +572,103 @@ export default function BoardPage() {
       )}
 
       {board && (
-        <div className="grid gap-4 lg:grid-cols-[1fr,320px]">
-          <div className="overflow-auto rounded-xl border border-slate-800 bg-slate-900/50 p-2">
+        <div className="grid gap-4 lg:grid-cols-[280px,1fr,320px]">
+          <aside className="rounded-xl border border-slate-800 bg-slate-900/60 p-4 space-y-3">
+            <h2 className="text-lg font-semibold text-slate-100">Unit details</h2>
+            {selectedUnit ? (
+              <div className="space-y-2">
+                <div className="flex items-center gap-2">
+                  <img
+                    src={unitIconSrc(selectedUnit)}
+                    alt={selectedUnit.name}
+                    className="w-6 h-6 object-contain"
+                  />
+                  <div>
+                    <div className="font-semibold text-sm text-slate-100">{selectedUnit.name}</div>
+                    <div className="text-xs text-slate-400">
+                      {selectedUnit.owner === "player" ? "Player unit" : "Enemy unit"}
+                    </div>
+                  </div>
+                </div>
+                <div className="space-y-1">
+                  <div className="flex justify-between text-xs text-slate-300">
+                    <span>HP</span>
+                    <span>
+                      {selectedUnit.currentHp}/{selectedUnit.maxHp}
+                    </span>
+                  </div>
+                  <div className="h-2 rounded-full bg-slate-800 overflow-hidden">
+                    <div
+                      className="h-full bg-emerald-500"
+                      style={{
+                        width: `${Math.max(
+                          0,
+                          Math.min(100, (selectedUnit.currentHp / selectedUnit.maxHp) * 100)
+                        )}%`,
+                      }}
+                    />
+                  </div>
+                </div>
+                <div className="grid grid-cols-2 gap-2 text-xs text-slate-200">
+                  <div className="rounded border border-slate-800 bg-slate-800/40 p-2">
+                    <div className="text-slate-400 text-[11px]">Melee</div>
+                    <div className="font-semibold">{selectedUnit.meleeAttack}</div>
+                  </div>
+                  <div className="rounded border border-slate-800 bg-slate-800/40 p-2">
+                    <div className="text-slate-400 text-[11px]">Ranged</div>
+                    <div className="font-semibold">{selectedUnit.rangedAttack}</div>
+                  </div>
+                  <div className="rounded border border-slate-800 bg-slate-800/40 p-2">
+                    <div className="text-slate-400 text-[11px]">Range</div>
+                    <div className="font-semibold">{selectedUnit.attackRange}</div>
+                  </div>
+                  <div className="rounded border border-slate-800 bg-slate-800/40 p-2">
+                    <div className="text-slate-400 text-[11px]">Speed</div>
+                    <div className="font-semibold">{selectedUnit.speed}</div>
+                  </div>
+                  <div className="rounded border border-slate-800 bg-slate-800/40 p-2">
+                    <div className="text-slate-400 text-[11px]">Defense</div>
+                    <div className="font-semibold">{selectedUnit.defense}</div>
+                  </div>
+                </div>
+              </div>
+            ) : (
+              <p className="text-sm text-slate-400">Select a unit to see its stats.</p>
+            )}
+          </aside>
+
+          <div
+            ref={mapRef}
+            className="overflow-auto rounded-xl border border-slate-800 bg-slate-900/50 p-2 max-h-[75vh] cursor-grab active:cursor-grabbing"
+            onMouseDown={(e) => {
+              if (e.button !== 0) return;
+              const container = mapRef.current;
+              if (!container) return;
+              setIsPanning(true);
+              panStart.current = {
+                x: e.clientX,
+                y: e.clientY,
+                scrollLeft: container.scrollLeft,
+                scrollTop: container.scrollTop,
+              };
+            }}
+            onMouseMove={(e) => {
+              if (!isPanning || !panStart.current || !mapRef.current) return;
+              e.preventDefault();
+              const deltaX = e.clientX - panStart.current.x;
+              const deltaY = e.clientY - panStart.current.y;
+              mapRef.current.scrollLeft = panStart.current.scrollLeft - deltaX;
+              mapRef.current.scrollTop = panStart.current.scrollTop - deltaY;
+            }}
+            onMouseUp={() => {
+              setIsPanning(false);
+              panStart.current = null;
+            }}
+            onMouseLeave={() => {
+              setIsPanning(false);
+              panStart.current = null;
+            }}
+          >
             <div
               className="grid gap-1"
               style={{
@@ -526,7 +692,11 @@ export default function BoardPage() {
                       draggable={false}
                       onClick={() => {
                         if (occupant) {
-                          selectUnit(occupant);
+                          if (selectedUnit && occupant.owner !== selectedUnit.owner) {
+                            void handleAttack(occupant);
+                          } else {
+                            selectUnit(occupant);
+                          }
                         } else if (selectedUnit) {
                           void handleMoveTo(q, r);
                         }
@@ -575,7 +745,7 @@ export default function BoardPage() {
               <p className="text-sm text-slate-400">
                 {phase === "deployment"
                   ? "Drag player units onto the first 3 columns on the left."
-                  : `Active side: ${activeSide === "player" ? "player" : "enemy"}. Click a unit then a destination tile.`}
+                  : `Active side: ${activeSide === "player" ? "player" : "enemy"}. Click a unit, then an enemy to attack or an empty tile to move (one action per turn).`}
               </p>
             </div>
 
@@ -586,8 +756,8 @@ export default function BoardPage() {
                   const isSelected = selectedUnitId === unit.uniqueId;
                   const hasMoved =
                     unit.owner === "player"
-                      ? moved.player.has(unit.uniqueId)
-                      : moved.enemy.has(unit.uniqueId);
+                      ? acted.player.has(unit.uniqueId)
+                      : acted.enemy.has(unit.uniqueId);
 
                   return (
                     <div
@@ -619,7 +789,7 @@ export default function BoardPage() {
                       <div className="text-[11px] text-slate-200">
                         {phase === "battle"
                           ? hasMoved
-                            ? "moved"
+                            ? "acted"
                             : "ready"
                           : unit.position
                           ? "placed"
@@ -645,8 +815,9 @@ export default function BoardPage() {
 
       <p className="text-xs text-slate-400">
         Deployment: drag player units only onto the first 3 columns. After "Continue" the enemy is
-        mirrored on the right. In battle: click a unit, then a tile; a path is drawn and the unit
-        moves as far as its movement points allow. Turns swap after all units on a side move.
+        mirrored on the right. In battle: click a unit, then an enemy to attack or an empty tile to
+        move (one action per unit per turn). You can pan the map with scrollbars or by click-dragging
+        the map.
       </p>
     </div>
   );

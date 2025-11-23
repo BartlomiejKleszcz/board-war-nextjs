@@ -2,6 +2,7 @@ export interface UnitDto {
     name: string;
     id: string;
     maxHp: number;
+    currentHp?: number;
     meleeAttack: number;
     rangedAttack: number;
     attackRange: number;
