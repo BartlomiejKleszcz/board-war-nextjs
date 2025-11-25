@@ -6,7 +6,7 @@ import { useState } from "react";
 type Player = {
   id: number;
   name: string;
-  color: "RED" | "BLUE";
+  color: "red" | "blue";
 };
 
 export default function NewGameForm() {
@@ -24,7 +24,7 @@ export default function NewGameForm() {
     try {
       const formData = new FormData(event.currentTarget);
       const playerName = formData.get("playerName") as string | null;
-      const color = formData.get("color") as "RED" | "BLUE" | null;
+      const color = formData.get("color") as "red" | "blue" | null;
 
       if (!playerName || !color) {
         setError("Enter a name and choose a color.");
@@ -86,7 +86,7 @@ export default function NewGameForm() {
               type="radio"
               id="color-red"
               name="color"
-              value="RED"
+              value="red"
               className="w-4 h-4"
               defaultChecked
             />
@@ -104,7 +104,7 @@ export default function NewGameForm() {
               type="radio"
               id="color-blue"
               name="color"
-              value="BLUE"
+              value="blue"
               className="w-4 h-4"
             />
             <span className="px-3 py-1 rounded bg-blue-600 text-white text-sm">

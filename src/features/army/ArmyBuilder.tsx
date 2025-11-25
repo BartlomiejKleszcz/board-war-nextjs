@@ -2,11 +2,11 @@
 
 "use client";
 
+import { useMemo, useState } from "react";
+import { useRouter } from "next/navigation";
 import type { Player } from "@/shared/player";
 import type { UnitDto } from "@/shared/unit";
-import type { Game } from "@/shared/game";
-import { useState, useMemo } from "react";
-import { useRouter } from "next/navigation";
+import type { GameState } from "@/shared/game";
 
 type ArmyBuilderProps = {
   player: Player;
@@ -60,9 +60,8 @@ export default function ArmyBuilder({ player, units }: ArmyBuilderProps) {
       setIsSaving(true);
       setError(null);
 
-      // budujemy payload z selected
       const armyUnits = Object.entries(selected).map(([unitId, count]) => ({
-        unitId, // np. "line-infantry"
+        unitId,
         count,
       }));
 
@@ -78,7 +77,7 @@ export default function ArmyBuilder({ player, units }: ArmyBuilderProps) {
         return;
       }
 
-      // dodajemy jednostki gracza do backendu (pojedyncze POST-y)
+      // push every unit to backend
       for (const { unitId, count } of armyUnits) {
         for (let i = 0; i < count; i++) {
           const res = await fetch(
@@ -93,25 +92,50 @@ export default function ArmyBuilder({ player, units }: ArmyBuilderProps) {
         }
       }
 
-      // tworzymy grę solo (z wrogą armią sklonowaną po stronie backendu)
-      const gameRes = await fetch("http://localhost:3000/game/solo", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({ playerId: player.id }),
-      });
+      const createStatefulGame = async (): Promise<GameState> => {
+        const res = await fetch("http://localhost:3000/game/state/solo", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({ playerId: player.id }),
+        });
+        if (!res.ok) {
+          throw new Error(`Failed to create game. Status: ${res.status}`);
+        }
+        return (await res.json()) as GameState;
+      };
 
-      if (!gameRes.ok) {
-        throw new Error(`Failed to create game. Status: ${gameRes.status}`);
+      // first create state to discover enemy playerId
+      let game = await createStatefulGame();
+      const enemyId = game.players.find((p) => p.playerId !== player.id)?.playerId;
+
+      // if enemy has no units, mirror army to enemy player, then recreate game state
+      const enemyHasUnits = game.units.some((u) => u.ownerPlayerId === enemyId);
+      if (enemyId && !enemyHasUnits) {
+        for (const { unitId, count } of armyUnits) {
+          for (let i = 0; i < count; i++) {
+            const res = await fetch(
+              `http://localhost:3000/players/${enemyId}/units/${unitId}`,
+              { method: "POST" }
+            );
+            if (!res.ok) {
+              throw new Error(
+                `Failed to add enemy unit ${unitId}. Status: ${res.status}`
+              );
+            }
+          }
+        }
+        game = await createStatefulGame();
       }
 
-      const game: Game = await gameRes.json();
       if (typeof window !== "undefined") {
-        sessionStorage.setItem("currentGame", JSON.stringify(game));
+        sessionStorage.setItem("currentGameState", JSON.stringify(game));
+        sessionStorage.setItem("currentGameId", game.gameId);
+        sessionStorage.setItem("localPlayerId", String(player.id));
       }
 
-      router.push(`/board?gameId=${game.id}`);
+      router.push(`/board?gameId=${game.gameId}`);
     } catch (e: any) {
       setError(e?.message ?? "Unknown error while saving army");
     } finally {
@@ -121,7 +145,6 @@ export default function ArmyBuilder({ player, units }: ArmyBuilderProps) {
 
   return (
     <div className="grid gap-6 lg:grid-cols-[2fr,1fr]">
-      {/* LEWA KOLUMNA – lista jednostek */}
       <div className="space-y-3">
         <h1 className="text-2xl font-semibold mb-2">
           Army for {player.name} ({player.color})
@@ -178,7 +201,6 @@ export default function ArmyBuilder({ player, units }: ArmyBuilderProps) {
         })}
       </div>
 
-      {/* PRAWA KOLUMNA – podsumowanie */}
       <aside className="rounded-xl border border-slate-700 bg-slate-800/60 p-4">
         <h2 className="text-lg font-semibold mb-2">Army summary</h2>
         <p className="text-sm text-slate-300">
