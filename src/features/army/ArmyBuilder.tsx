@@ -4,6 +4,7 @@
 
 import { useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
+import { useAuth } from "@/features/auth/AuthProvider";
 import type { Player } from "@/shared/player";
 import type { UnitDto } from "@/shared/unit";
 import type { GameState } from "@/shared/game";
@@ -15,6 +16,7 @@ type ArmyBuilderProps = {
 
 export default function ArmyBuilder({ player, units }: ArmyBuilderProps) {
   const router = useRouter();
+  const { authFetch, user } = useAuth();
 
   const [selected, setSelected] = useState<Record<string, number>>({});
   const [error, setError] = useState<string | null>(null);
@@ -76,12 +78,17 @@ export default function ArmyBuilder({ player, units }: ArmyBuilderProps) {
         setIsSaving(false);
         return;
       }
+      if (!user) {
+        setError("Log in to save your army.");
+        setIsSaving(false);
+        return;
+      }
 
       // push every unit to backend
       for (const { unitId, count } of armyUnits) {
         for (let i = 0; i < count; i++) {
-          const res = await fetch(
-            `http://localhost:3000/players/${player.id}/units/${unitId}`,
+          const res = await authFetch(
+            `/players/${player.id}/units/${unitId}`,
             { method: "POST" }
           );
           if (!res.ok) {
@@ -93,7 +100,7 @@ export default function ArmyBuilder({ player, units }: ArmyBuilderProps) {
       }
 
       const createStatefulGame = async (): Promise<GameState> => {
-        const res = await fetch("http://localhost:3000/game/state/solo", {
+        const res = await authFetch("/game/state/solo", {
           method: "POST",
           headers: {
             "Content-Type": "application/json",
@@ -115,8 +122,8 @@ export default function ArmyBuilder({ player, units }: ArmyBuilderProps) {
       if (enemyId && !enemyHasUnits) {
         for (const { unitId, count } of armyUnits) {
           for (let i = 0; i < count; i++) {
-            const res = await fetch(
-              `http://localhost:3000/players/${enemyId}/units/${unitId}`,
+            const res = await authFetch(
+              `/players/${enemyId}/units/${unitId}`,
               { method: "POST" }
             );
             if (!res.ok) {
