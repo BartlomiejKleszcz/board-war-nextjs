@@ -5,6 +5,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { DragEvent } from "react";
 import { useSearchParams } from "next/navigation";
+import { useAuth } from "@/features/auth/AuthProvider";
 import type { Board, HexCoords, Tile } from "@/shared/board";
 import type { ApplyActionDto, GameState } from "@/shared/game";
 import type { UnitDto } from "@/shared/unit";
@@ -45,6 +46,7 @@ type GameResult = {
 };
 
 export default function BoardPage() {
+  const { user, isReady: isAuthReady, authFetch } = useAuth();
   const [board, setBoard] = useState<Board | null>(null);
   const [gameId, setGameId] = useState<string | null>(null);
   const [localPlayerId, setLocalPlayerId] = useState<number | null>(null);
@@ -69,16 +71,25 @@ export default function BoardPage() {
     player: new Set(),
     enemy: new Set(),
   }));
+  const [moved, setMoved] = useState<{ player: Set<number>; enemy: Set<number> }>(() => ({
+    player: new Set(),
+    enemy: new Set(),
+  }));
   const [damageMarkers, setDamageMarkers] = useState<DamageMarker[]>([]);
   const searchParams = useSearchParams();
   const mapRef = useRef<HTMLDivElement | null>(null);
   const unitTemplatesRef = useRef<UnitDto[]>([]);
   const localPlayerIdRef = useRef<number | null>(null);
+  const [hasRecordedStats, setHasRecordedStats] = useState(false);
   const [isPanning, setIsPanning] = useState(false);
   const panStart = useRef<{ x: number; y: number; scrollLeft: number; scrollTop: number } | null>(
     null
   );
   const panMoved = useRef(false);
+
+  useEffect(() => {
+    setHasRecordedStats(false);
+  }, [gameId]);
 
   const canonicalColor = (value: string | undefined, fallback: "red" | "blue"): "red" | "blue" => {
     const low = (value ?? "").toLowerCase();
@@ -170,7 +181,7 @@ export default function BoardPage() {
       if (!gameId) {
         throw new Error("Missing game id");
       }
-      const res = await fetch(`http://localhost:3000/game/${gameId}/actions`, {
+      const res = await authFetch(`/game/${gameId}/actions`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(dto),
@@ -185,11 +196,17 @@ export default function BoardPage() {
       syncFromState(state);
       return state;
     },
-    [gameId, syncFromState]
+    [authFetch, gameId, syncFromState]
   );
 
   useEffect(() => {
     async function load() {
+      if (!isAuthReady) return;
+      if (!user) {
+        setError("Log in to load a battle.");
+        setIsLoading(false);
+        return;
+      }
       try {
         setIsLoading(true);
         const queryGameId = searchParams.get("gameId");
@@ -197,7 +214,9 @@ export default function BoardPage() {
           typeof window !== "undefined" ? sessionStorage.getItem("currentGameId") : null;
         const rawLocalPlayerId =
           typeof window !== "undefined" ? sessionStorage.getItem("localPlayerId") : null;
-        const derivedLocalPlayerId = rawLocalPlayerId ? Number(rawLocalPlayerId) : null;
+        const derivedLocalPlayerId = rawLocalPlayerId
+          ? Number(rawLocalPlayerId)
+          : user?.id ?? null;
 
         const idToUse = queryGameId ?? storedGameId;
         if (!idToUse) {
@@ -211,8 +230,8 @@ export default function BoardPage() {
         setLocalPlayerId(derivedLocalPlayerId);
 
         const [stateRes, unitsRes] = await Promise.all([
-          fetch(`http://localhost:3000/game/${idToUse}/state`, { cache: "no-store" }),
-          fetch("http://localhost:3000/units", { cache: "no-store" }),
+          authFetch(`/game/${idToUse}/state`, { cache: "no-store" }),
+          authFetch("/units", { cache: "no-store" }),
         ]);
 
         if (!stateRes.ok) {
@@ -241,7 +260,7 @@ export default function BoardPage() {
     }
 
     load();
-  }, [searchParams]);
+  }, [authFetch, isAuthReady, searchParams, syncFromState, user]);
 
   const tileByCoord = useMemo(() => {
     const map = new Map<string, Tile>();
@@ -340,6 +359,15 @@ export default function BoardPage() {
     return { player: build(playerUnits), enemy: build(enemyUnits) };
   }, [playerUnits, enemyUnits]);
 
+  const summarizedUnits = useMemo(() => {
+    const counts = new Map<string, number>();
+    [...playerUnits, ...enemyUnits].forEach((u) => {
+      const label = `${u.owner === "player" ? "Player" : "Enemy"} ${u.name}`;
+      counts.set(label, (counts.get(label) ?? 0) + 1);
+    });
+    return Array.from(counts.entries()).map(([label, count]) => `${label} x${count}`);
+  }, [enemyUnits, playerUnits]);
+
   const pathKeys = useMemo(() => new Set(pathCoords.map((c) => `${c.q},${c.r}`)), [pathCoords]);
 
   const selectedUnit = useMemo(
@@ -365,7 +393,7 @@ export default function BoardPage() {
       const enemyPoints = damageScore.enemy;
       const winner =
         playerPoints === enemyPoints ? "draw" : playerPoints > enemyPoints ? "player" : "enemy";
-      finishGame(winner, `${reason} (punkty ${playerPoints}:${enemyPoints})`);
+      finishGame(winner, `${reason} (points ${playerPoints}:${enemyPoints})`);
     },
     [damageScore.enemy, damageScore.player, finishGame]
   );
@@ -383,11 +411,11 @@ export default function BoardPage() {
 
     if (victoryMode === "elimination") {
       if (!enemyAlive && !playerAlive) {
-        finishGame("draw", "Obie armie zostaly zniszczone");
+        finishGame("draw", "Both armies were destroyed");
       } else if (!enemyAlive) {
-        finishGame("player", "Wszyscy wrogowie pokonani");
+        finishGame("player", "All enemies defeated");
       } else if (!playerAlive) {
-        finishGame("enemy", "Twoje jednostki zostaly zniszczone");
+        finishGame("enemy", "Your units were destroyed");
       }
       return;
     }
@@ -395,10 +423,10 @@ export default function BoardPage() {
     if (!enemyAlive || !playerAlive) {
       const reason =
         !enemyAlive && !playerAlive
-          ? "Obie armie zostaly zniszczone"
+          ? "Both armies were destroyed"
           : !enemyAlive
-          ? "Brak wrogich jednostek"
-          : "Brak twoich jednostek";
+          ? "No enemy units remain"
+          : "No player units remain";
       resolveByPoints(reason);
     }
   }, [
@@ -414,9 +442,52 @@ export default function BoardPage() {
   useEffect(() => {
     if (phase !== "battle" || victoryMode !== "turns" || gameResult.winner) return;
     if (roundNumber > turnLimit) {
-      resolveByPoints("Osiagnieto limit tur");
+      resolveByPoints("Turn limit reached");
     }
   }, [roundNumber, turnLimit, victoryMode, phase, gameResult.winner, resolveByPoints]);
+
+  useEffect(() => {
+    if (!user || !gameResult.winner || hasRecordedStats || !isAuthReady) return;
+    const parsedId = gameId ? Number(gameId) : NaN;
+    const safeGameId = Number.isFinite(parsedId) ? parsedId : undefined;
+    const result =
+      gameResult.winner === "player" ? "win" : gameResult.winner === "enemy" ? "lose" : "draw";
+    const payload = {
+      gameId: safeGameId,
+      result,
+      damageDealt: damageScore.player,
+      damageTaken: damageScore.enemy,
+      units: summarizedUnits,
+    };
+
+    const sendStats = async () => {
+      try {
+        const res = await authFetch("/stats/record", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(payload),
+        });
+        if (!res.ok) {
+          throw new Error(`Failed to record stats. Status: ${res.status}`);
+        }
+        setHasRecordedStats(true);
+      } catch (e) {
+        console.error("Failed to persist battle stats", e);
+      }
+    };
+
+    void sendStats();
+  }, [
+    authFetch,
+    damageScore.enemy,
+    damageScore.player,
+    gameId,
+    gameResult.winner,
+    hasRecordedStats,
+    isAuthReady,
+    summarizedUnits,
+    user,
+  ]);
 
   async function setUnitPositionOnBackend(unitId: number, coords: HexCoords, owner: "player" | "enemy") {
     const playerId = owner === "player" ? localPlayerId : enemyPlayerId;
@@ -664,6 +735,7 @@ export default function BoardPage() {
     setPhase("battle");
     setActiveSide("player");
     setActed({ player: new Set(), enemy: new Set() });
+    setMoved({ player: new Set(), enemy: new Set() });
     setSelectedUnitId(null);
     setPathCoords([]);
   }
@@ -681,6 +753,11 @@ export default function BoardPage() {
     const actedSet = selectedUnit.owner === "player" ? acted.player : acted.enemy;
     if (actedSet.has(selectedUnit.uniqueId)) {
       setError("This unit already acted this turn.");
+      return;
+    }
+    const movedSet = selectedUnit.owner === "player" ? moved.player : moved.enemy;
+    if (movedSet.has(selectedUnit.uniqueId)) {
+      setError("This unit already moved this turn.");
       return;
     }
 
@@ -715,18 +792,10 @@ export default function BoardPage() {
     setPathCoords(pathResult.path);
     await setUnitPositionOnBackend(selectedUnit.uniqueId, destination, selectedUnit.owner);
 
-    const nextActedPlayer = new Set(acted.player);
-    const nextActedEnemy = new Set(acted.enemy);
-    (selectedUnit.owner === "player" ? nextActedPlayer : nextActedEnemy).add(selectedUnit.uniqueId);
-    setActed({ player: nextActedPlayer, enemy: nextActedEnemy });
-
-    const unitsForSide =
-      selectedUnit.owner === "player" ? alivePlayerUnits : aliveEnemyUnits;
-    const actedSetCurrent = selectedUnit.owner === "player" ? nextActedPlayer : nextActedEnemy;
-    const allActed = unitsForSide.every((u) => actedSetCurrent.has(u.uniqueId));
-    if (allActed) {
-      endTurnInternal();
-    }
+    const nextMovedPlayer = new Set(moved.player);
+    const nextMovedEnemy = new Set(moved.enemy);
+    (selectedUnit.owner === "player" ? nextMovedPlayer : nextMovedEnemy).add(selectedUnit.uniqueId);
+    setMoved({ player: nextMovedPlayer, enemy: nextMovedEnemy });
   }
 
   async function handleAttack(target: OwnedUnit) {
@@ -777,16 +846,12 @@ export default function BoardPage() {
 
     const nextActedPlayer = new Set(acted.player);
     const nextActedEnemy = new Set(acted.enemy);
+    const nextMovedPlayer = new Set(moved.player);
+    const nextMovedEnemy = new Set(moved.enemy);
     (selectedUnit.owner === "player" ? nextActedPlayer : nextActedEnemy).add(selectedUnit.uniqueId);
+    (selectedUnit.owner === "player" ? nextMovedPlayer : nextMovedEnemy).add(selectedUnit.uniqueId);
     setActed({ player: nextActedPlayer, enemy: nextActedEnemy });
-
-    const unitsForSide =
-      selectedUnit.owner === "player" ? alivePlayerUnits : aliveEnemyUnits;
-    const actedSetCurrent = selectedUnit.owner === "player" ? nextActedPlayer : nextActedEnemy;
-    const allActed = unitsForSide.every((u) => actedSetCurrent.has(u.uniqueId));
-    if (allActed) {
-      endTurnInternal();
-    }
+    setMoved({ player: nextMovedPlayer, enemy: nextMovedEnemy });
   }
 
   async function endTurnInternal() {
@@ -805,6 +870,7 @@ export default function BoardPage() {
       setPathCoords([]);
       setError(null);
       setActed({ player: new Set(), enemy: new Set() });
+      setMoved({ player: new Set(), enemy: new Set() });
     } catch (e: any) {
       setError(e?.message ?? "Failed to end turn");
     }
@@ -1198,10 +1264,14 @@ export default function BoardPage() {
                 )
                 .map((unit) => {
                   const isSelected = selectedUnitId === unit.uniqueId;
-                  const hasMoved =
+                  const hasActed =
                     unit.owner === "player"
                       ? acted.player.has(unit.uniqueId)
                       : acted.enemy.has(unit.uniqueId);
+                  const hasMoved =
+                    unit.owner === "player"
+                      ? moved.player.has(unit.uniqueId)
+                      : moved.enemy.has(unit.uniqueId);
 
                   return (
                     <div
@@ -1232,8 +1302,10 @@ export default function BoardPage() {
                       </div>
                       <div className="text-[11px] text-slate-200">
                         {phase === "battle"
-                          ? hasMoved
+                          ? hasActed
                             ? "acted"
+                            : hasMoved
+                            ? "moved"
                             : "ready"
                           : unit.position
                           ? "placed"

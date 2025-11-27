@@ -5,13 +5,15 @@
 import { useEffect, useState } from "react";
 import { useSearchParams } from "next/navigation";
 
+import { useAuth } from "@/features/auth/AuthProvider";
 import ArmyBuilder from "@/features/army/ArmyBuilder";
 import type { Player } from "@/shared/player";
 import type { UnitDto } from "@/shared/unit";
 
 export default function ArmyPage() {
   const searchParams = useSearchParams();
-  const playerId = searchParams.get("playerId");
+  const queryPlayerId = searchParams.get("playerId");
+  const { user, isReady, authFetch } = useAuth();
 
   const [player, setPlayer] = useState<Player | null>(null);
   const [units, setUnits] = useState<UnitDto[] | null>(null);
@@ -19,8 +21,11 @@ export default function ArmyPage() {
   const [isLoading, setIsLoading] = useState(true);
 
   useEffect(() => {
+    if (!isReady) return;
+
+    const playerId = queryPlayerId ?? (user ? String(user.id) : null);
     if (!playerId) {
-      setError("Missing playerId query param. Open /army via the New Game form.");
+      setError("Log in to build an army.");
       setIsLoading(false);
       return;
     }
@@ -31,10 +36,10 @@ export default function ArmyPage() {
         setError(null);
 
         const [unitsRes, playerRes] = await Promise.all([
-          fetch("http://localhost:3000/units", {
+          authFetch("/units", {
             cache: "no-store",
           }),
-          fetch(`http://localhost:3000/players/${playerId}`, {
+          authFetch(`/players/${playerId}`, {
             cache: "no-store",
           }),
         ]);
@@ -58,8 +63,8 @@ export default function ArmyPage() {
       }
     }
 
-    loadData();
-  }, [playerId]);
+    void loadData();
+  }, [authFetch, isReady, queryPlayerId, user]);
 
   if (isLoading) {
     return (
