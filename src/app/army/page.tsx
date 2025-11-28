@@ -2,7 +2,7 @@
 
 "use client";
 
-import { useEffect, useState } from "react";
+import { Suspense, useEffect, useState } from "react";
 import { useSearchParams } from "next/navigation";
 
 import { useAuth } from "@/features/auth/AuthProvider";
@@ -11,6 +11,14 @@ import type { Player } from "@/shared/player";
 import type { UnitDto } from "@/shared/unit";
 
 export default function ArmyPage() {
+  return (
+    <Suspense fallback={<div className="p-6 text-slate-200">Loading army data...</div>}>
+      <ArmyPageContent />
+    </Suspense>
+  );
+}
+
+function ArmyPageContent() {
   const searchParams = useSearchParams();
   const queryPlayerId = searchParams.get("playerId");
   const { user, isReady, authFetch } = useAuth();

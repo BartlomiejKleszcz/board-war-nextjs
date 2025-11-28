@@ -1512,7 +1512,7 @@ export default function BoardPage() {
       <p className="text-xs text-slate-400">
         Deployment: drag player units only onto the first 3 columns. After "Continue" the enemy is
         mirrored on the right. In battle: each unit may attack once and move once per turn, in any
-        order—use this to fall back after firing or charge after moving. Pick the victory mode above
+        order - use this to fall back after firing or charge after moving. Pick the victory mode above
         (points = manual finish, elimination = auto when one side dies, turn limit = auto after
         chosen rounds). You can pan the map with scrollbars or by click-dragging the map.
       </p>
