@@ -3,7 +3,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import type { DragEvent } from "react";
+import type { CSSProperties, DragEvent } from "react";
 import { useSearchParams } from "next/navigation";
 import { useAuth } from "@/features/auth/AuthProvider";
 import type { Board, HexCoords, Tile } from "@/shared/board";
@@ -43,6 +43,12 @@ type VictoryMode = "points" | "elimination" | "turns";
 type GameResult = {
   winner: "player" | "enemy" | "draw" | null;
   reason: string;
+};
+
+type TileVisual = {
+  className: string;
+  style: CSSProperties;
+  label?: string;
 };
 
 export default function BoardPage() {
@@ -600,32 +606,149 @@ export default function BoardPage() {
   const distance = (a: HexCoords, b: HexCoords) =>
     Math.abs(a.q - b.q) + Math.abs(a.r - b.r);
 
-  function tileClass(tile?: Tile): string {
+  // Textured gradients to give each terrain a distinct look without external assets.
+  function tileVisual(tile?: Tile): TileVisual {
     if (!tile) {
-      return "bg-slate-700/40 text-slate-500";
+      return {
+        className: "text-slate-400 shadow-inner",
+        style: {
+          backgroundColor: "#1e293b",
+          backgroundImage:
+            "linear-gradient(135deg, rgba(255,255,255,0.08) 0 40%, rgba(0,0,0,0.25) 40% 60%, rgba(255,255,255,0.08) 60% 100%)",
+          backgroundSize: "16px 16px",
+        },
+      };
     }
+
+    const base: Pick<TileVisual, "className" | "style"> = {
+      className: "text-slate-50 shadow-[inset_0_1px_0_rgba(255,255,255,0.14)]",
+      style: {},
+    };
 
     switch (tile.terrain) {
       case "water":
-        return "bg-sky-700";
+        return {
+          ...base,
+          className: `${base.className} text-sky-50`,
+          style: {
+            backgroundColor: "#0ea5e9",
+            backgroundImage:
+              "radial-gradient(circle at 25% 30%, rgba(255,255,255,0.24) 0 18%, transparent 20%), radial-gradient(circle at 75% 70%, rgba(8,47,73,0.4) 0 20%, transparent 25%), linear-gradient(145deg, rgba(14,165,233,0.75), rgba(12,74,110,0.9))",
+            backgroundSize: "110% 110%, 120% 120%, 100% 100%",
+            backgroundBlendMode: "screen, overlay, normal",
+          },
+          label: "WTR",
+        };
       case "bridge":
-        return "bg-orange-500";
+        return {
+          ...base,
+          className: `${base.className} text-amber-50`,
+          style: {
+            backgroundColor: "#b45309",
+            backgroundImage:
+              "linear-gradient(90deg, rgba(0,0,0,0.22) 0 6%, transparent 6% 12%, rgba(0,0,0,0.16) 12% 18%, transparent 18% 24%), linear-gradient(135deg, rgba(255,255,255,0.18), rgba(146,64,14,0.35))",
+            backgroundSize: "12px 100%, 100% 100%",
+            backgroundBlendMode: "multiply, screen",
+          },
+          label: "BRG",
+        };
       case "ford":
-        return "bg-cyan-700";
+        return {
+          ...base,
+          className: `${base.className} text-cyan-50`,
+          style: {
+            backgroundColor: "#0ea5e9",
+            backgroundImage:
+              "linear-gradient(90deg, rgba(14,165,233,0.6) 0 60%, rgba(217,119,6,0.65) 60%), radial-gradient(circle at 35% 30%, rgba(255,255,255,0.18) 0 18%, transparent 26%), radial-gradient(circle at 70% 70%, rgba(8,47,73,0.45) 0 18%, transparent 26%), linear-gradient(135deg, rgba(217,119,6,0.45), rgba(14,165,233,0.55))",
+            backgroundSize: "100% 100%, 120% 120%, 140% 140%, 100% 100%",
+            backgroundBlendMode: "screen, multiply, overlay, screen",
+          },
+          label: "FRD",
+        };
       case "road":
-        return "bg-amber-700";
+        return {
+          ...base,
+          className: `${base.className} text-amber-50`,
+          style: {
+            backgroundColor: "#78350f",
+            backgroundImage:
+              "repeating-linear-gradient(90deg, rgba(0,0,0,0.28) 0 8%, rgba(255,255,255,0.06) 8% 16%), linear-gradient(135deg, rgba(146,64,14,0.75), rgba(30,41,59,0.65))",
+            backgroundSize: "18px 100%, 100% 100%",
+            backgroundBlendMode: "multiply, screen",
+          },
+          label: "RD",
+        };
       case "hill":
-        return "bg-lime-700";
+        return {
+          ...base,
+          className: `${base.className} text-lime-50`,
+          style: {
+            backgroundColor: "#4d7c0f",
+            backgroundImage:
+              "radial-gradient(circle at 40% 35%, rgba(255,255,255,0.22) 0 30%, transparent 34%), radial-gradient(circle at 65% 70%, rgba(0,0,0,0.25) 0 35%, transparent 48%), linear-gradient(145deg, rgba(101,163,13,0.9), rgba(63,98,18,0.85))",
+            backgroundSize: "120% 120%, 120% 120%, 100% 100%",
+            backgroundBlendMode: "screen, overlay, normal",
+          },
+          label: "HIL",
+        };
       case "forest":
-        return "bg-emerald-900";
+        return {
+          ...base,
+          className: `${base.className} text-emerald-50`,
+          style: {
+            backgroundColor: "#064e3b",
+            backgroundImage:
+              "radial-gradient(circle at 24% 32%, rgba(34,197,94,0.8) 0 12%, transparent 18%), radial-gradient(circle at 68% 68%, rgba(16,130,70,0.85) 0 10%, transparent 16%), radial-gradient(circle at 42% 62%, rgba(5,150,105,0.55) 0 9%, transparent 18%), repeating-linear-gradient(45deg, rgba(14,116,144,0.35) 0 4px, rgba(14,116,144,0.2) 4px 10px)",
+            backgroundSize: "70% 70%, 70% 70%, 90% 90%, 16px 16px",
+            backgroundBlendMode: "screen, screen, multiply",
+          },
+          label: "FOR",
+        };
       case "city":
-        return "bg-yellow-500";
+        return {
+          ...base,
+          className: `${base.className} text-slate-900`,
+          style: {
+            backgroundColor: "#cbd5e1",
+            backgroundImage:
+              "linear-gradient(135deg, rgba(255,255,255,0.55), rgba(148,163,184,0.2)), radial-gradient(circle at 30% 35%, rgba(148,163,184,0.55) 0 12%, transparent 18%), radial-gradient(circle at 70% 65%, rgba(51,65,85,0.35) 0 14%, transparent 22%)",
+            backgroundSize: "100% 100%, 110% 110%, 120% 120%",
+            backgroundBlendMode: "screen, overlay, multiply",
+          },
+          label: "CTY",
+        };
       case "swamp":
-        return "bg-teal-700";
+        return {
+          ...base,
+          className: `${base.className} text-emerald-50`,
+          style: {
+            backgroundColor: "#134e4a",
+            backgroundImage:
+              "radial-gradient(circle at 30% 25%, rgba(52,211,153,0.25) 0 32%, transparent 40%), radial-gradient(circle at 70% 70%, rgba(6,78,59,0.65) 0 30%, transparent 44%), linear-gradient(160deg, rgba(15,118,110,0.65), rgba(34,197,94,0.12))",
+            backgroundSize: "120% 120%, 120% 120%, 100% 100%",
+            backgroundBlendMode: "screen, multiply, normal",
+          },
+          label: "SWP",
+        };
       case "plain":
       default:
-        return "bg-emerald-600";
+        return {
+          ...base,
+          className: `${base.className} text-emerald-50`,
+          style: {
+            backgroundColor: "#166534",
+            backgroundImage:
+              "linear-gradient(120deg, rgba(74,222,128,0.32), rgba(34,197,94,0.16)), repeating-linear-gradient(45deg, rgba(255,255,255,0.06) 0 2px, transparent 2px 8px)",
+            backgroundSize: "100% 100%, 12px 12px",
+            backgroundBlendMode: "screen, soft-light",
+          },
+        };
     }
+  }
+
+  function tileClass(tile?: Tile): string {
+    if (!tile) return "";
+    return tile.passable ? "" : "opacity-80";
   }
 
   const ICON_NAME: Record<string, string> = {
@@ -644,20 +767,6 @@ export default function BoardPage() {
     return `/units/${baseName}-${color}.png`;
   }
 
-  function tileIcon(tile?: Tile): string {
-    if (!tile) return "";
-
-    switch (tile.terrain) {
-      case "city":
-        return "C";
-      case "bridge":
-        return "B";
-      case "ford":
-        return "F";
-      default:
-        return "";
-    }
-  }
 
   function onDragStart(e: DragEvent, unitId: number) {
     e.dataTransfer.setData("text/unit-id", String(unitId));
@@ -750,11 +859,6 @@ export default function BoardPage() {
   async function handleMoveTo(q: number, r: number) {
     if (phase !== "battle" || gameResult.winner || !selectedUnit || !selectedUnit.position) return;
     if (selectedUnit.owner !== activeSide || selectedUnit.currentHp <= 0) return;
-    const actedSet = selectedUnit.owner === "player" ? acted.player : acted.enemy;
-    if (actedSet.has(selectedUnit.uniqueId)) {
-      setError("This unit already acted this turn.");
-      return;
-    }
     const movedSet = selectedUnit.owner === "player" ? moved.player : moved.enemy;
     if (movedSet.has(selectedUnit.uniqueId)) {
       setError("This unit already moved this turn.");
@@ -846,12 +950,8 @@ export default function BoardPage() {
 
     const nextActedPlayer = new Set(acted.player);
     const nextActedEnemy = new Set(acted.enemy);
-    const nextMovedPlayer = new Set(moved.player);
-    const nextMovedEnemy = new Set(moved.enemy);
     (selectedUnit.owner === "player" ? nextActedPlayer : nextActedEnemy).add(selectedUnit.uniqueId);
-    (selectedUnit.owner === "player" ? nextMovedPlayer : nextMovedEnemy).add(selectedUnit.uniqueId);
     setActed({ player: nextActedPlayer, enemy: nextActedEnemy });
-    setMoved({ player: nextMovedPlayer, enemy: nextMovedEnemy });
   }
 
   async function endTurnInternal() {
@@ -1160,6 +1260,8 @@ export default function BoardPage() {
                   const occupant = occupiedMap.get(`${q},${r}`);
                   const isSelected = occupant && occupant.uniqueId === selectedUnitId;
                   const isPath = pathKeys.has(`${q},${r}`);
+                  const visuals = tileVisual(tile);
+                  const badge = visuals.label;
                   const canDrop =
                     phase === "deployment" &&
                     allowedDeployColumns.has(q) &&
@@ -1188,23 +1290,23 @@ export default function BoardPage() {
                         if (canDrop) e.preventDefault();
                       }}
                       onDrop={(e) => onTileDrop(e, q, r)}
-                      className={`w-12 aspect-square ${tileClass(
+                      className={`w-12 aspect-square ${visuals.className} ${tileClass(
                         tile
-                      )} rounded-md border flex items-center justify-center text-[10px] leading-tight text-slate-100 relative ${
+                      )} rounded-md border overflow-hidden flex items-center justify-center text-[10px] leading-tight relative ${
                         canDrop ? "border-amber-300" : "border-slate-900"
                       } ${isSelected ? "ring-2 ring-amber-400" : ""} ${
                         isPath ? "outline outline-2 outline-cyan-300" : ""
                       }`}
+                      style={visuals.style}
                       title={
                         tile
                           ? `q=${tile.coords.q}, r=${tile.coords.r}, terrain=${tile.terrain}`
                           : `q=${q}, r=${r} (no tile data)`
                       }
                     >
-                      {tileIcon(tile)}
                       {occupant && (
                         <>
-                          <div className="absolute top-1 left-1 right-1 h-1 rounded-full bg-black/50 overflow-hidden border border-slate-900/60">
+                          <div className="absolute top-1 left-1 right-1 z-20 h-1 rounded-full bg-black/50 overflow-hidden border border-slate-900/60">
                             <div
                               className="h-full bg-emerald-400"
                               style={{
@@ -1216,7 +1318,7 @@ export default function BoardPage() {
                             />
                           </div>
                           <div
-                            className={`absolute inset-0 rounded-md bg-black/25 flex items-center justify-center px-1 text-center ${
+                            className={`absolute inset-0 z-10 rounded-md bg-black/25 flex items-center justify-center px-1 text-center pointer-events-none ${
                               occupant.owner === "player" ? "text-red-100" : "text-blue-100"
                             }`}
                           >
@@ -1228,12 +1330,17 @@ export default function BoardPage() {
                           </div>
                         </>
                       )}
+                      {badge && (
+                        <span className="pointer-events-none absolute bottom-0.5 right-0.5 z-30 rounded bg-slate-900/70 px-1 text-[9px] font-semibold tracking-tight text-slate-50 shadow-sm backdrop-blur">
+                          {badge}
+                        </span>
+                      )}
                       {damageMarkers
                         .filter((m) => m.coords.q === q && m.coords.r === r)
                         .map((m) => (
                           <div
                             key={m.id}
-                            className="absolute -top-6 left-1/2 -translate-x-1/2 text-xs font-bold text-red-300 animate-bounce"
+                            className="pointer-events-none absolute -top-6 left-1/2 z-40 -translate-x-1/2 text-xs font-bold text-red-300 animate-bounce"
                           >
                             -{m.amount}
                           </div>
@@ -1251,7 +1358,7 @@ export default function BoardPage() {
               <p className="text-sm text-slate-400">
                 {phase === "deployment"
                   ? "Drag player units onto the first 3 columns on the left."
-                  : `Active side: ${activeSide === "player" ? "player" : "enemy"}. Click a unit, then an enemy to attack or an empty tile to move (one action per turn).`}
+                  : `Active side: ${activeSide === "player" ? "player" : "enemy"}. Click a unit, then an enemy to attack or an empty tile to move (each unit can attack once and move once per turn, in any order).`}
               </p>
             </div>
 
@@ -1404,10 +1511,10 @@ export default function BoardPage() {
 
       <p className="text-xs text-slate-400">
         Deployment: drag player units only onto the first 3 columns. After "Continue" the enemy is
-        mirrored on the right. In battle: click a unit, then an enemy to attack or an empty tile to
-        move (one action per unit per turn). Pick the victory mode above (points = manual finish,
-        elimination = auto when one side dies, turn limit = auto after chosen rounds). You can pan
-        the map with scrollbars or by click-dragging the map.
+        mirrored on the right. In battle: each unit may attack once and move once per turn, in any
+        order—use this to fall back after firing or charge after moving. Pick the victory mode above
+        (points = manual finish, elimination = auto when one side dies, turn limit = auto after
+        chosen rounds). You can pan the map with scrollbars or by click-dragging the map.
       </p>
     </div>
   );
