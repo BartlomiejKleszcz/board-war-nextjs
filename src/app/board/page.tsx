@@ -2,7 +2,7 @@
 
 "use client";
 
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { CSSProperties, DragEvent } from "react";
 import { useSearchParams } from "next/navigation";
 import { useAuth } from "@/features/auth/AuthProvider";
@@ -52,6 +52,14 @@ type TileVisual = {
 };
 
 export default function BoardPage() {
+  return (
+    <Suspense fallback={<div className="p-6 text-slate-200">Loading board...</div>}>
+      <BoardPageContent />
+    </Suspense>
+  );
+}
+
+function BoardPageContent() {
   const { user, isReady: isAuthReady, authFetch } = useAuth();
   const [board, setBoard] = useState<Board | null>(null);
   const [gameId, setGameId] = useState<string | null>(null);
