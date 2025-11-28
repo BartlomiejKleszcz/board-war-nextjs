@@ -1,7 +1,9 @@
 import { UnitDto } from "@/shared/unit";
 import UnitCard from "@/features/units/UnitCard";
 
-const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://localhost:3000";
+const API_BASE_URL =
+  process.env.NEXT_PUBLIC_API_BASE_URL ??
+  (process.env.NODE_ENV === "production" ? "/api" : "http://localhost:3000");
 
 export default async function UnitsPage() {
   const res = await fetch(`${API_BASE_URL}/units`, { cache: "no-store" });

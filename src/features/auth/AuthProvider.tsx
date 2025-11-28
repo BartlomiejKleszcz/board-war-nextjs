@@ -32,7 +32,9 @@ type AuthContextValue = {
   authFetch: (input: string, init?: RequestInit) => Promise<Response>;
 };
 
-const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://localhost:3000";
+const API_BASE_URL =
+  process.env.NEXT_PUBLIC_API_BASE_URL ??
+  (process.env.NODE_ENV === "production" ? "/api" : "http://localhost:3000");
 const STORAGE_KEY = "boardwar.auth";
 
 const AuthContext = createContext<AuthContextValue | undefined>(undefined);
