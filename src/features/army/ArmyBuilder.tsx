@@ -58,23 +58,9 @@ export default function ArmyBuilder({ player, units }: ArmyBuilderProps) {
   }, [selected, units]);
 
   async function resetUnits(playerId: number) {
-    // Fetch current units and delete one by one using existing endpoint
-    const res = await authFetch(`/players/${playerId}`);
+    const res = await authFetch(`/players/${playerId}/units`, { method: "DELETE" });
     if (!res.ok) {
-      throw new Error(`Failed to load current army (status ${res.status}).`);
-    }
-    const data = (await res.json()) as Player;
-    const currentUnits = (data.units ?? []) as (UnitDto & { unitId?: number })[];
-    for (const unit of currentUnits) {
-      const uniqueId =
-        (unit as any).uniqueId ?? (unit as any).unitId ?? (unit as any).id;
-      if (uniqueId == null) continue;
-      const delRes = await authFetch(`/players/${playerId}/units/${uniqueId}`, {
-        method: "PUT",
-      });
-      if (!delRes.ok) {
-        throw new Error(`Failed to delete unit ${uniqueId} (status ${delRes.status}).`);
-      }
+      throw new Error(`Failed to reset army (status ${res.status}).`);
     }
   }
 
@@ -137,28 +123,8 @@ export default function ArmyBuilder({ player, units }: ArmyBuilderProps) {
         return (await res.json()) as GameState;
       };
 
-      // first create state to discover enemy playerId
-      let game = await createStatefulGame();
-      const enemyId = game.players.find((p) => p.playerId !== player.id)?.playerId;
-
-      // always mirror army to enemy player to keep parity, then recreate game state
-      if (enemyId) {
-        await resetUnits(enemyId);
-        for (const { unitId, count } of armyUnits) {
-          for (let i = 0; i < count; i++) {
-            const res = await authFetch(
-              `/players/${enemyId}/units/${unitId}`,
-              { method: "POST" }
-            );
-            if (!res.ok) {
-              throw new Error(
-                `Failed to add enemy unit ${unitId}. Status: ${res.status}`
-              );
-            }
-          }
-        }
-        game = await createStatefulGame();
-      }
+      // backend clones enemy army automatically; single stateful game creation is enough
+      const game = await createStatefulGame();
 
       if (typeof window !== "undefined") {
         sessionStorage.setItem("currentGameState", JSON.stringify(game));
