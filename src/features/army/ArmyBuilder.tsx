@@ -91,31 +91,10 @@ export default function ArmyBuilder({ player, units }: ArmyBuilderProps) {
         return;
       }
 
-      const createStatefulGame = async (): Promise<GameState> => {
-        const res = await authFetch("/game/state/solo", {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-          },
-          body: JSON.stringify({ playerId: player.id }),
-        });
-        if (!res.ok) {
-          throw new Error(`Failed to create game. Status: ${res.status}`);
-        }
-        return (await res.json()) as GameState;
-      };
-
-      // clear armies before any creation to avoid stacking
+      // clear player's army before adding new units
       await resetUnits(player.id);
 
-      // create once to discover enemy id
-      const initial = await createStatefulGame();
-      const enemyId = initial.players.find((p) => p.playerId !== player.id)?.playerId;
-      if (enemyId) {
-        await resetUnits(enemyId);
-      }
-
-      // push every unit to backend (player)
+      // push every unit to backend (player only; backend will mirror enemy)
       for (const { unitId, count } of armyUnits) {
         for (let i = 0; i < count; i++) {
           const res = await authFetch(
@@ -130,24 +109,21 @@ export default function ArmyBuilder({ player, units }: ArmyBuilderProps) {
         }
       }
 
-      // mirror to enemy if we have an enemy id
-      if (enemyId) {
-        for (const { unitId, count } of armyUnits) {
-          for (let i = 0; i < count; i++) {
-            const res = await authFetch(
-              `/players/${enemyId}/units/${unitId}`,
-              { method: "POST" }
-            );
-            if (!res.ok) {
-              throw new Error(
-                `Failed to add enemy unit ${unitId}. Status: ${res.status}`
-              );
-            }
-          }
+      // create game once; backend mirrors enemy and builds state
+      const createStatefulGame = async (): Promise<GameState> => {
+        const res = await authFetch("/game/state/solo", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({ playerId: player.id }),
+        });
+        if (!res.ok) {
+          throw new Error(`Failed to create game. Status: ${res.status}`);
         }
-      }
+        return (await res.json()) as GameState;
+      };
 
-      // final stateful game with fresh armies
       const game = await createStatefulGame();
 
       if (typeof window !== "undefined") {
