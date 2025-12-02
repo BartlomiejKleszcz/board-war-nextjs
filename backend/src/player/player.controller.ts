@@ -97,4 +97,16 @@ export class PlayerController {
         }
     }
 
+    @Delete(':playerId/units')
+    @ApiOperation({ summary: 'Remove all units of player' })
+    @ApiResponse({ status: 200, description: 'All units removed for the player.' })
+    resetUnits(@Param('playerId', ParseIntPipe) playerId: number) {
+        const res = this.playerService.resetUnits(playerId);
+        if (res) {
+            return res;
+        } else {
+            throw new Error('Player not found');
+        }
+    }
+
 }

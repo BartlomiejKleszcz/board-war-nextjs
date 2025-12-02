@@ -62,6 +62,12 @@ export default function ArmyBuilder({ player, units }: ArmyBuilderProps) {
       setIsSaving(true);
       setError(null);
 
+      // clear previous army to avoid stacking units between saves
+      const resetRes = await authFetch(`/players/${player.id}/units`, { method: "DELETE" });
+      if (!resetRes.ok) {
+        throw new Error(`Failed to reset army. Status: ${resetRes.status}`);
+      }
+
       const armyUnits = Object.entries(selected).map(([unitId, count]) => ({
         unitId,
         count,
@@ -120,6 +126,10 @@ export default function ArmyBuilder({ player, units }: ArmyBuilderProps) {
       // if enemy has no units, mirror army to enemy player, then recreate game state
       const enemyHasUnits = game.units.some((u) => u.ownerPlayerId === enemyId);
       if (enemyId && !enemyHasUnits) {
+        const resetEnemy = await authFetch(`/players/${enemyId}/units`, { method: "DELETE" });
+        if (!resetEnemy.ok) {
+          throw new Error(`Failed to reset enemy army. Status: ${resetEnemy.status}`);
+        }
         for (const { unitId, count } of armyUnits) {
           for (let i = 0; i < count; i++) {
             const res = await authFetch(

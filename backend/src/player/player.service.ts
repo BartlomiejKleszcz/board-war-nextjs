@@ -91,4 +91,9 @@ export class PlayerService {
         const player = this.players.find((p) => p.id === playerId);
         return player ? player.budget : undefined;
     }
+
+    resetUnits(playerId: Player['id']) {
+        this.unitService.resetPlayerUnits(playerId);
+        return { success: true };
+    }
 }
