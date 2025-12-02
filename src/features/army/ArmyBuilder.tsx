@@ -69,9 +69,6 @@ export default function ArmyBuilder({ player, units }: ArmyBuilderProps) {
       setIsSaving(true);
       setError(null);
 
-      // clear previous army to avoid stacking units between saves
-      await resetUnits(player.id);
-
       const armyUnits = Object.entries(selected).map(([unitId, count]) => ({
         unitId,
         count,
@@ -94,21 +91,6 @@ export default function ArmyBuilder({ player, units }: ArmyBuilderProps) {
         return;
       }
 
-      // push every unit to backend
-      for (const { unitId, count } of armyUnits) {
-        for (let i = 0; i < count; i++) {
-          const res = await authFetch(
-            `/players/${player.id}/units/${unitId}`,
-            { method: "POST" }
-          );
-          if (!res.ok) {
-            throw new Error(
-              `Failed to add unit ${unitId}. Status: ${res.status}`
-            );
-          }
-        }
-      }
-
       const createStatefulGame = async (): Promise<GameState> => {
         const res = await authFetch("/game/state/solo", {
           method: "POST",
@@ -123,7 +105,49 @@ export default function ArmyBuilder({ player, units }: ArmyBuilderProps) {
         return (await res.json()) as GameState;
       };
 
-      // backend clones enemy army automatically; single stateful game creation is enough
+      // clear armies before any creation to avoid stacking
+      await resetUnits(player.id);
+
+      // create once to discover enemy id
+      const initial = await createStatefulGame();
+      const enemyId = initial.players.find((p) => p.playerId !== player.id)?.playerId;
+      if (enemyId) {
+        await resetUnits(enemyId);
+      }
+
+      // push every unit to backend (player)
+      for (const { unitId, count } of armyUnits) {
+        for (let i = 0; i < count; i++) {
+          const res = await authFetch(
+            `/players/${player.id}/units/${unitId}`,
+            { method: "POST" }
+          );
+          if (!res.ok) {
+            throw new Error(
+              `Failed to add unit ${unitId}. Status: ${res.status}`
+            );
+          }
+        }
+      }
+
+      // mirror to enemy if we have an enemy id
+      if (enemyId) {
+        for (const { unitId, count } of armyUnits) {
+          for (let i = 0; i < count; i++) {
+            const res = await authFetch(
+              `/players/${enemyId}/units/${unitId}`,
+              { method: "POST" }
+            );
+            if (!res.ok) {
+              throw new Error(
+                `Failed to add enemy unit ${unitId}. Status: ${res.status}`
+              );
+            }
+          }
+        }
+      }
+
+      // final stateful game with fresh armies
       const game = await createStatefulGame();
 
       if (typeof window !== "undefined") {
