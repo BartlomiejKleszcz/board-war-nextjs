@@ -57,16 +57,34 @@ export default function ArmyBuilder({ player, units }: ArmyBuilderProps) {
     );
   }, [selected, units]);
 
+  async function resetUnits(playerId: number) {
+    // Fetch current units and delete one by one using existing endpoint
+    const res = await authFetch(`/players/${playerId}`);
+    if (!res.ok) {
+      throw new Error(`Failed to load current army (status ${res.status}).`);
+    }
+    const data = (await res.json()) as Player;
+    const currentUnits = (data.units ?? []) as (UnitDto & { unitId?: number })[];
+    for (const unit of currentUnits) {
+      const uniqueId =
+        (unit as any).uniqueId ?? (unit as any).unitId ?? (unit as any).id;
+      if (uniqueId == null) continue;
+      const delRes = await authFetch(`/players/${playerId}/units/${uniqueId}`, {
+        method: "PUT",
+      });
+      if (!delRes.ok) {
+        throw new Error(`Failed to delete unit ${uniqueId} (status ${delRes.status}).`);
+      }
+    }
+  }
+
   async function handleSaveArmy() {
     try {
       setIsSaving(true);
       setError(null);
 
       // clear previous army to avoid stacking units between saves
-      const resetRes = await authFetch(`/players/${player.id}/units`, { method: "DELETE" });
-      if (!resetRes.ok) {
-        throw new Error(`Failed to reset army. Status: ${resetRes.status}`);
-      }
+      await resetUnits(player.id);
 
       const armyUnits = Object.entries(selected).map(([unitId, count]) => ({
         unitId,
@@ -123,13 +141,9 @@ export default function ArmyBuilder({ player, units }: ArmyBuilderProps) {
       let game = await createStatefulGame();
       const enemyId = game.players.find((p) => p.playerId !== player.id)?.playerId;
 
-      // if enemy has no units, mirror army to enemy player, then recreate game state
-      const enemyHasUnits = game.units.some((u) => u.ownerPlayerId === enemyId);
-      if (enemyId && !enemyHasUnits) {
-        const resetEnemy = await authFetch(`/players/${enemyId}/units`, { method: "DELETE" });
-        if (!resetEnemy.ok) {
-          throw new Error(`Failed to reset enemy army. Status: ${resetEnemy.status}`);
-        }
+      // always mirror army to enemy player to keep parity, then recreate game state
+      if (enemyId) {
+        await resetUnits(enemyId);
         for (const { unitId, count } of armyUnits) {
           for (let i = 0; i < count; i++) {
             const res = await authFetch(
