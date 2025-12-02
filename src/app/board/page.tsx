@@ -139,7 +139,8 @@ function BoardPageContent() {
       const playerColorValue = state.players.find((p) => p.playerId === playerId)?.color;
       const enemyColorValue = state.players.find((p) => p.playerId !== playerId)?.color;
       const playerC = canonicalColor(playerColorValue, "red");
-      const enemyC = canonicalColor(enemyColorValue, playerC === "red" ? "blue" : "red");
+      const rawEnemyC = canonicalColor(enemyColorValue, playerC === "red" ? "blue" : "red");
+      const enemyC = rawEnemyC === playerC ? (playerC === "red" ? "blue" : "red") : rawEnemyC;
       setPlayerColor(playerC);
       setEnemyColor(enemyC);
 
