@@ -6,26 +6,12 @@ import type { UnitDto } from "@/shared/unit";
 
 function normalizeApiBase(base: string | undefined) {
   if (!base) return undefined;
-  let next = base.endsWith("/") ? base.slice(0, -1) : base;
-  const shouldForceHttps =
-    next.startsWith("http://") &&
-    (typeof window !== "undefined"
-      ? window.location.protocol === "https:"
-      : process.env.NODE_ENV === "production");
-  if (shouldForceHttps) {
-    try {
-      const url = new URL(next);
-      url.protocol = "https:";
-      next = url.toString().replace(/\/$/, "");
-    } catch {
-      // keep as-is
-    }
-  }
-  return next;
+  return base.endsWith("/") ? base.slice(0, -1) : base;
 }
 
 const API_BASE_URL = normalizeApiBase(
-  process.env.NEXT_PUBLIC_API_BASE_URL ??
+  (typeof window !== "undefined" ? `${window.location.origin}/api` : undefined) ??
+    process.env.NEXT_PUBLIC_API_BASE_URL ??
     process.env.NEXT_PUBLIC_API_URL ??
     (process.env.NODE_ENV === "production" ? undefined : "http://localhost:3000")
 );

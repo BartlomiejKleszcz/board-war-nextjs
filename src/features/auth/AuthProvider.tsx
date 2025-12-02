@@ -34,22 +34,7 @@ type AuthContextValue = {
 
 function normalizeApiBase(base: string) {
   if (!base) return "/api";
-  let next = base.endsWith("/") ? base.slice(0, -1) : base;
-  const shouldForceHttps =
-    next.startsWith("http://") &&
-    (typeof window !== "undefined"
-      ? window.location.protocol === "https:"
-      : process.env.NODE_ENV === "production");
-  if (shouldForceHttps) {
-    try {
-      const url = new URL(next);
-      url.protocol = "https:";
-      next = url.toString().replace(/\/$/, "");
-    } catch {
-      // keep as-is if URL parsing fails
-    }
-  }
-  return next;
+  return base.endsWith("/") ? base.slice(0, -1) : base;
 }
 
 const rawApiBase =
@@ -57,7 +42,10 @@ const rawApiBase =
   process.env.NEXT_PUBLIC_API_URL ??
   (process.env.NODE_ENV === "production" ? "/api" : "http://localhost:3000");
 
-const API_BASE_URL = normalizeApiBase(rawApiBase);
+const clientBase =
+  typeof window !== "undefined" ? `${window.location.origin}/api` : undefined;
+
+const API_BASE_URL = normalizeApiBase(clientBase ?? rawApiBase);
 const STORAGE_KEY = "boardwar.auth";
 
 const AuthContext = createContext<AuthContextValue | undefined>(undefined);
