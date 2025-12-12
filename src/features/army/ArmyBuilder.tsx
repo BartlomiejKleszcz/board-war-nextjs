@@ -15,14 +15,15 @@ type ArmyBuilderProps = {
 };
 
 export default function ArmyBuilder({ player, units }: ArmyBuilderProps) {
-  const router = useRouter();
-  const { authFetch, user } = useAuth();
+  const router = useRouter(); // router Next.js do nawigacji po zapisaniu armii (client-side)
+  const { authFetch, user } = useAuth(); // authFetch dodaje autoryzacje do fetchy; user to zalogowany uzytkownik
 
-  const [selected, setSelected] = useState<Record<string, number>>({});
-  const [error, setError] = useState<string | null>(null);
-  const [isSaving, setIsSaving] = useState(false);
+  const [selected, setSelected] = useState<Record<string, number>>({}); // mapa unitId -> ilosc wybranych jednostek w armii
+  const [error, setError] = useState<string | null>(null); // komunikat o bledach walidacji lub zapisu
+  const [isSaving, setIsSaving] = useState(false); // blokada UI na czas zapisu/fechowania
 
   function addUnit(unitId: string) {
+    // zwiekszamy licznik wybranego unitu; inicjalnie 0 gdy nie ma w mapie
     setSelected((prev) => {
       const current = prev[unitId] ?? 0;
       return {
@@ -33,6 +34,7 @@ export default function ArmyBuilder({ player, units }: ArmyBuilderProps) {
   }
 
   function removeUnit(unitId: string) {
+    // zmniejszamy licznik; gdy schodzimy do 0, usuwamy wpis z mapy
     setSelected((prev) => {
       const current = prev[unitId] ?? 0;
       if (current <= 1) {
@@ -47,6 +49,7 @@ export default function ArmyBuilder({ player, units }: ArmyBuilderProps) {
   }
 
   const totalCost = useMemo(() => {
+    // sumujemy koszt: dla kazdego unitId bierzemy cene z listy units i mnozymy przez liczbe sztuk
     return Object.entries(selected).reduce<number>(
       (sum, [unitId, count]) => {
         const unit = units.find((u) => u.id === unitId);
@@ -58,6 +61,7 @@ export default function ArmyBuilder({ player, units }: ArmyBuilderProps) {
   }, [selected, units]);
 
   async function resetUnits(playerId: number) {
+    // usuwamy cala armie gracza na backendzie, by nadpisac ja nowa konfiguracja
     const res = await authFetch(`/players/${playerId}/units`, { method: "DELETE" });
     if (!res.ok) {
       throw new Error(`Failed to reset army (status ${res.status}).`);
@@ -69,6 +73,7 @@ export default function ArmyBuilder({ player, units }: ArmyBuilderProps) {
       setIsSaving(true);
       setError(null);
 
+      // przepisujemy mape selected (unitId -> count) na tablice obiektow
       const armyUnits = Object.entries(selected).map(([unitId, count]) => ({
         unitId,
         count,
@@ -81,6 +86,7 @@ export default function ArmyBuilder({ player, units }: ArmyBuilderProps) {
       }
 
       if (totalCost > player.budget) {
+        // walidacja budzetu: nie mozna przekroczyc maksymalnej kwoty gracza
         setError("Army cost exceeds budget");
         setIsSaving(false);
         return;
@@ -95,6 +101,7 @@ export default function ArmyBuilder({ player, units }: ArmyBuilderProps) {
       await resetUnits(player.id);
 
       // push every unit to backend (player only; backend will mirror enemy)
+      // tu wysylamy kazda sztuke jako osobny POST (backend zrobi mirroring armii przeciwnika)
       for (const { unitId, count } of armyUnits) {
         for (let i = 0; i < count; i++) {
           const res = await authFetch(
@@ -109,7 +116,7 @@ export default function ArmyBuilder({ player, units }: ArmyBuilderProps) {
         }
       }
 
-      // create game once; backend mirrors enemy and builds state
+      // tworzymy gre solo; backend zestawia przeciwnika i zwraca stan
       const createStatefulGame = async (): Promise<GameState> => {
         const res = await authFetch("/game/state/solo", {
           method: "POST",
@@ -127,11 +134,13 @@ export default function ArmyBuilder({ player, units }: ArmyBuilderProps) {
       const game = await createStatefulGame();
 
       if (typeof window !== "undefined") {
+        // zapisujemy stan gry w sessionStorage, zeby ekran planszy mial dane po przejsciu
         sessionStorage.setItem("currentGameState", JSON.stringify(game));
         sessionStorage.setItem("currentGameId", game.gameId);
         sessionStorage.setItem("localPlayerId", String(player.id));
       }
 
+      // po pomyslnym zapisie i utworzeniu gry przechodzimy do planszy z gameId w query
       router.push(`/board?gameId=${game.gameId}`);
     } catch (e: any) {
       setError(e?.message ?? "Unknown error while saving army");
