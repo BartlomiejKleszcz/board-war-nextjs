@@ -68,8 +68,9 @@ function ArmyPageContent() {
 
         setUnits(unitsJson);
         setPlayer(playerJson);
-      } catch (e: any) {
-        setError(e?.message ?? "Unknown error while loading army data");
+      } catch (e: unknown) {
+        const message = e instanceof Error ? e.message : "Unknown error while loading army data";
+        setError(message);
       } finally {
         setIsLoading(false);
       }

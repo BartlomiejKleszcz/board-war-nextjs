@@ -2,6 +2,7 @@
 
 "use client";
 
+import Image from "next/image";
 import { Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { CSSProperties, DragEvent } from "react";
 import { useSearchParams } from "next/navigation";
@@ -9,6 +10,10 @@ import { useAuth } from "@/features/auth/AuthProvider";
 import type { Board, HexCoords, Tile } from "@/shared/board";
 import type { ApplyActionDto, GameState } from "@/shared/game";
 import type { UnitDto } from "@/shared/unit";
+
+function getErrorMessage(error: unknown, fallback: string) {
+  return error instanceof Error ? error.message : fallback;
+}
 
 type OwnedUnit = UnitDto & {
   uniqueId: number;
@@ -65,12 +70,10 @@ function BoardPageContent() {
   const [gameId, setGameId] = useState<string | null>(null);
   const [localPlayerId, setLocalPlayerId] = useState<number | null>(null);
   const [enemyPlayerId, setEnemyPlayerId] = useState<number | null>(null);
-  const [unitTemplates, setUnitTemplates] = useState<UnitDto[]>([]);
   const [playerUnits, setPlayerUnits] = useState<OwnedUnit[]>([]);
   const [enemyUnits, setEnemyUnits] = useState<OwnedUnit[]>([]);
   const [phase, setPhase] = useState<"deployment" | "battle" | "finished">("deployment");
   const [activeSide, setActiveSide] = useState<"player" | "enemy">("player");
-  const [turnNumber, setTurnNumber] = useState<number>(1);
   const [playerColor, setPlayerColor] = useState<string>("red");
   const [enemyColor, setEnemyColor] = useState<string>("blue");
   const [selectedUnitId, setSelectedUnitId] = useState<number | null>(null);
@@ -128,7 +131,6 @@ function BoardPageContent() {
       };
       setBoard(mappedBoard);
       setGameId(state.gameId);
-      setTurnNumber(state.turnNumber);
 
       const playerId = explicitLocalId ?? localPlayerIdRef.current ?? state.players[0]?.playerId ?? null;
       const enemyId = state.players.find((p) => p.playerId !== playerId)?.playerId ?? null;
@@ -259,7 +261,6 @@ function BoardPageContent() {
         const state = (await stateRes.json()) as GameState;
         const templates = (await unitsRes.json()) as UnitDto[];
         unitTemplatesRef.current = templates;
-        setUnitTemplates(templates);
 
         if (typeof window !== "undefined") {
           sessionStorage.setItem("currentGameState", JSON.stringify(state));
@@ -267,8 +268,8 @@ function BoardPageContent() {
         }
 
         syncFromState(state, templates, derivedLocalPlayerId);
-      } catch (e: any) {
-        setError(e?.message ?? "Failed to load game data.");
+      } catch (e: unknown) {
+        setError(getErrorMessage(e, "Failed to load game data."));
       } finally {
         setIsLoading(false);
       }
@@ -504,19 +505,22 @@ function BoardPageContent() {
     user,
   ]);
 
-  async function setUnitPositionOnBackend(unitId: number, coords: HexCoords, owner: "player" | "enemy") {
-    const playerId = owner === "player" ? localPlayerId : enemyPlayerId;
-    if (!playerId) return;
-    try {
-      await applyActionOnBackend({
-        type: "MOVE",
-        playerId,
-        payload: { unitId, q: coords.q, r: coords.r },
-      });
-    } catch (e: any) {
-      setError(e?.message ?? "Failed to move unit on backend");
-    }
-  }
+  const setUnitPositionOnBackend = useCallback(
+    async (unitId: number, coords: HexCoords, owner: "player" | "enemy") => {
+      const playerId = owner === "player" ? localPlayerId : enemyPlayerId;
+      if (!playerId) return;
+      try {
+        await applyActionOnBackend({
+          type: "MOVE",
+          playerId,
+          payload: { unitId, q: coords.q, r: coords.r },
+        });
+      } catch (e: unknown) {
+        setError(getErrorMessage(e, "Failed to move unit on backend"));
+      }
+    },
+    [applyActionOnBackend, enemyPlayerId, localPlayerId]
+  );
 
   const getNeighbors = useCallback(
     (coords: HexCoords): HexCoords[] => {
@@ -781,11 +785,14 @@ function BoardPageContent() {
     e.dataTransfer.setData("text/unit-id", String(unitId));
   }
 
-  function canDropOnTile(q: number, r: number): boolean {
-    const tile = tileByCoord.get(`${q},${r}`);
-    if (!tile || !tile.passable) return false;
-    return !occupiedMap.has(`${q},${r}`);
-  }
+  const canDropOnTile = useCallback(
+    (q: number, r: number): boolean => {
+      const tile = tileByCoord.get(`${q},${r}`);
+      if (!tile || !tile.passable) return false;
+      return !occupiedMap.has(`${q},${r}`);
+    },
+    [occupiedMap, tileByCoord]
+  );
 
   function centerOnSide(side: "player" | "enemy") {
     const container = mapRef.current;
@@ -811,7 +818,7 @@ function BoardPageContent() {
       setError(null);
       await setUnitPositionOnBackend(unitId, coords, "player");
     },
-    [phase, playerUnits, allowedDeployColumns]
+    [allowedDeployColumns, canDropOnTile, phase, playerUnits, setUnitPositionOnBackend]
   );
 
   function onTileDrop(e: DragEvent, q: number, r: number) {
@@ -980,8 +987,8 @@ function BoardPageContent() {
       setError(null);
       setActed({ player: new Set(), enemy: new Set() });
       setMoved({ player: new Set(), enemy: new Set() });
-    } catch (e: any) {
-      setError(e?.message ?? "Failed to end turn");
+    } catch (e: unknown) {
+      setError(getErrorMessage(e, "Failed to end turn"));
     }
   }
 
@@ -1161,9 +1168,11 @@ function BoardPageContent() {
             {selectedUnit ? (
               <div className="space-y-2">
                 <div className="flex items-center gap-2">
-                  <img
+                  <Image
                     src={unitIconSrc(selectedUnit)}
                     alt={selectedUnit.name}
+                    width={24}
+                    height={24}
                     className="w-6 h-6 object-contain"
                   />
                   <div>
@@ -1331,9 +1340,11 @@ function BoardPageContent() {
                               occupant.owner === "player" ? "text-red-100" : "text-blue-100"
                             }`}
                           >
-                            <img
+                            <Image
                               src={unitIconSrc(occupant)}
                               alt={occupant.name}
+                              width={32}
+                              height={32}
                               className="w-8 h-8 object-contain drop-shadow-md"
                             />
                           </div>
@@ -1403,9 +1414,11 @@ function BoardPageContent() {
                     >
                       <div>
                         <div className="text-sm font-semibold flex items-center gap-2">
-                          <img
+                          <Image
                             src={unitIconSrc(unit)}
                             alt={unit.name}
+                            width={24}
+                            height={24}
                             className="w-5 h-5 object-contain"
                           />
                           <span>{unit.name}</span>
@@ -1519,7 +1532,7 @@ function BoardPageContent() {
       )}
 
       <p className="text-xs text-slate-400">
-        Deployment: drag player units only onto the first 3 columns. After "Continue" the enemy is
+        Deployment: drag player units only onto the first 3 columns. After &quot;Continue&quot; the enemy is
         mirrored on the right. In battle: each unit may attack once and move once per turn, in any
         order - use this to fall back after firing or charge after moving. Pick the victory mode above
         (points = manual finish, elimination = auto when one side dies, turn limit = auto after

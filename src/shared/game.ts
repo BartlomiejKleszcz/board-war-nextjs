@@ -12,7 +12,7 @@ export type GameActionType = "MOVE" | "ATTACK" | "END_TURN";
 // Dowolny ksztalt danych przenoszacych szczegoly akcji.
 // W praktyce to luzny slownik (np. dla MOVE: { unitId, from: {q,r}, to: {q,r} }).
 // Kazdy handler akcji powinien walidowac i rzutowac payload do wlasnego kontraktu.
-export type GameActionPayload = Record<string, any>;
+export type GameActionPayload = Record<string, unknown>;
 
 // Wejscie do systemu wykonywania akcji (typ + opcjonalny gracz + payload).
 export interface ApplyActionDto {

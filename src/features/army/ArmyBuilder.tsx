@@ -38,8 +38,9 @@ export default function ArmyBuilder({ player, units }: ArmyBuilderProps) {
     setSelected((prev) => {
       const current = prev[unitId] ?? 0;
       if (current <= 1) {
-        const { [unitId]: _, ...rest } = prev;
-        return rest;
+        const next = { ...prev };
+        delete next[unitId];
+        return next;
       }
       return {
         ...prev,
@@ -142,8 +143,8 @@ export default function ArmyBuilder({ player, units }: ArmyBuilderProps) {
 
       // po pomyslnym zapisie i utworzeniu gry przechodzimy do planszy z gameId w query
       router.push(`/board?gameId=${game.gameId}`);
-    } catch (e: any) {
-      setError(e?.message ?? "Unknown error while saving army");
+    } catch (e: unknown) {
+      setError(e instanceof Error ? e.message : "Unknown error while saving army");
     } finally {
       setIsSaving(false);
     }
