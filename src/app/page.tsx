@@ -5,7 +5,7 @@ export default function Home() {
   return (
 <div className="flex flex-col items-center">
   <h1 className="text-3xl md:text-2xl  font-extrabold text-center mt-10 mb-6 tracking-wide text-slate-100 text-[#C99842]">
-    Welcome to Board War, a strategic board game experience!</h1>
+    Welcome to Board War, a strategic board game experience.</h1>
   <div className={styles.center}>
     <Image
       className={styles.logo}
