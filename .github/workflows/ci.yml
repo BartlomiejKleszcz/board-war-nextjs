@@ -27,7 +27,7 @@ jobs:
         continue-on-error: false
 
       - name: Test (if script exists)
-        run: npm run -s test
+        run: npm run -s --if-present test
         continue-on-error: false
 
       - name: Build
