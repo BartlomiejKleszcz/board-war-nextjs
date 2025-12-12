@@ -51,8 +51,8 @@ export default function StatsPage() {
         }
         const data = (await res.json()) as UserStats;
         setStats(data);
-      } catch (e: any) {
-        setError(e?.message ?? "Failed to fetch stats.");
+      } catch (e: unknown) {
+        setError(e instanceof Error ? e.message : "Failed to fetch stats.");
       } finally {
         setIsLoading(false);
       }

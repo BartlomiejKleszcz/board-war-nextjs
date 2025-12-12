@@ -20,8 +20,8 @@ export default function LoginPage() {
     try {
       await login(email, password);
       router.push("/new-game");
-    } catch (e: any) {
-      setError(e?.message ?? "Failed to log in.");
+    } catch (e: unknown) {
+      setError(e instanceof Error ? e.message : "Failed to log in.");
     } finally {
       setIsSubmitting(false);
     }

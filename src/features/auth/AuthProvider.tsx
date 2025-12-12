@@ -53,7 +53,10 @@ const AuthContext = createContext<AuthContextValue | undefined>(undefined);
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<SafeUser | null>(null);
   const [token, setToken] = useState<string | null>(null);
-  const [isReady, setIsReady] = useState(false);
+  const [isReady, setIsReady] = useState(() => {
+    if (typeof window === "undefined") return false;
+    return !localStorage.getItem(STORAGE_KEY);
+  });
 
   const persistAuth = useCallback((nextToken: string, nextUser: SafeUser) => {
     if (typeof window === "undefined") return;
@@ -144,42 +147,43 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     if (typeof window === "undefined") return;
     const raw = localStorage.getItem(STORAGE_KEY);
-    if (!raw) {
-      setIsReady(true);
-      return;
-    }
+    if (!raw) return;
 
-    try {
-      const parsed = JSON.parse(raw) as { token?: string; user?: SafeUser };
-      if (parsed?.token) {
-        setToken(parsed.token);
-        if (parsed.user) {
-          setUser(parsed.user);
+    const initAuth = async () => {
+      try {
+        const parsed = JSON.parse(raw) as { token?: string; user?: SafeUser };
+        if (parsed?.token) {
+          setToken(parsed.token);
+          if (parsed.user) {
+            setUser(parsed.user);
+          }
+
+          fetch(`${API_BASE_URL}/auth/me`, {
+            cache: "no-store",
+            headers: { Authorization: `Bearer ${parsed.token}` },
+          })
+            .then(async (res) => {
+              if (!res.ok) {
+                throw new Error("Token invalid");
+              }
+              const me = (await res.json()) as SafeUser;
+              setUser(me);
+              persistAuth(parsed.token!, me);
+            })
+            .catch(() => {
+              void logout();
+            })
+            .finally(() => setIsReady(true));
+        } else {
+          setIsReady(true);
         }
-
-        fetch(`${API_BASE_URL}/auth/me`, {
-          cache: "no-store",
-          headers: { Authorization: `Bearer ${parsed.token}` },
-        })
-          .then(async (res) => {
-            if (!res.ok) {
-              throw new Error("Token invalid");
-            }
-            const me = (await res.json()) as SafeUser;
-            setUser(me);
-            persistAuth(parsed.token!, me);
-          })
-          .catch(() => {
-            void logout();
-          })
-          .finally(() => setIsReady(true));
-      } else {
+      } catch (e) {
+        console.error("Failed to parse stored auth data", e);
         setIsReady(true);
       }
-    } catch (e) {
-      console.error("Failed to parse stored auth data", e);
-      setIsReady(true);
-    }
+    };
+
+    void initAuth();
   }, [logout, persistAuth]);
 
   const value = useMemo<AuthContextValue>(

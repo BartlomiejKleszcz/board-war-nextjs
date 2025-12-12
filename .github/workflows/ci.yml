@@ -22,5 +22,14 @@ jobs:
       - name: Install
         run: npm ci
 
+      - name: Lint (if script exists)
+        run: npm run -s lint
+        continue-on-error: false
+
+      - name: Test (if script exists)
+        run: npm run -s --if-present test
+        continue-on-error: false
+
       - name: Build
         run: npm run build
+        continue-on-error: false

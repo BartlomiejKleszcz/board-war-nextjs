@@ -27,8 +27,8 @@ export default function RegisterPage() {
     try {
       await register({ email, password, displayName, color });
       router.push("/new-game");
-    } catch (e: any) {
-      setError(e?.message ?? "Failed to create account.");
+    } catch (e: unknown) {
+      setError(e instanceof Error ? e.message : "Failed to create account.");
     } finally {
       setIsSubmitting(false);
     }

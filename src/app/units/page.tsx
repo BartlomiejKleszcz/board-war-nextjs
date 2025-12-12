@@ -38,8 +38,8 @@ export default function UnitsPage() {
         }
         const data = (await res.json()) as UnitDto[];
         setUnits(data);
-      } catch (e: any) {
-        setError(e?.message ?? "Błąd pobierania jednostek.");
+      } catch (e: unknown) {
+        setError(e instanceof Error ? e.message : "Błąd pobierania jednostek.");
       } finally {
         setIsLoading(false);
       }

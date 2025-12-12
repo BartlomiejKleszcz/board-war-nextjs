@@ -33,8 +33,8 @@ export default function NewGameForm() {
         }
         const data = (await res.json()) as Player;
         setPlayer(data);
-      } catch (e: any) {
-        setError(e?.message ?? "Failed to fetch player data.");
+      } catch (e: unknown) {
+        setError(e instanceof Error ? e.message : "Failed to fetch player data.");
       } finally {
         setIsLoading(false);
       }
