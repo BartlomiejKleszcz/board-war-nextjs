@@ -26,4 +26,9 @@ jobs:
       - name: Sync build to /srv/boardwar/frontend
         run: |
           sudo mkdir -p /srv/boardwar/frontend
-          sudo rsync -a --delete ./out/ /srv/boardwar/frontend/
+          sudo rsync -a --delete --itemize-changes ./out/ /srv/boardwar/frontend/
+
+      - name: Verify deployed files
+        run: |
+          sudo ls -la /srv/boardwar/frontend | head -n 20
+          sudo test -f /srv/boardwar/frontend/version.txt && sudo cat /srv/boardwar/frontend/version.txt || echo "version.txt missing"
