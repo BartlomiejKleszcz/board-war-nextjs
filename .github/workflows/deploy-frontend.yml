@@ -17,6 +17,11 @@ jobs:
 
       - run: npm ci
       - run: npm run build
+        env:
+          NEXT_PUBLIC_BUILD_SHA: ${{ github.sha }}
+
+      - name: Write build version file
+        run: echo "${{ github.sha }}" | sudo tee ./out/version.txt > /dev/null
 
       - name: Sync build to /srv/boardwar/frontend
         run: |
