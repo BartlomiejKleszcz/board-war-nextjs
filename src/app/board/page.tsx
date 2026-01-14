@@ -137,6 +137,7 @@ function BoardPageContent() {
     null
   );
   const panMoved = useRef(false);
+  const buildSha = process.env.NEXT_PUBLIC_BUILD_SHA;
 
   // 28) Resetujemy flage statystyk przy zmianie gry.
   useEffect(() => {
@@ -1793,6 +1794,9 @@ function BoardPageContent() {
         (points = manual finish, elimination = auto when one side dies, turn limit = auto after
         chosen rounds). You can pan the map with scrollbars or by click-dragging the map.
       </p>
+      {buildSha && (
+        <p className="text-[10px] text-slate-500">Build: {buildSha.slice(0, 8)}</p>
+      )}
     </div>
   );
 }
