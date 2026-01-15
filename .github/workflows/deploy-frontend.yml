@@ -19,6 +19,7 @@ jobs:
       - run: npm run build
         env:
           NEXT_PUBLIC_BUILD_SHA: ${{ github.sha }}
+          NEXT_PUBLIC_API_BASE_URL: /api
 
       - name: Write build version file
         run: echo "${{ github.sha }}" | sudo tee ./out/version.txt > /dev/null
