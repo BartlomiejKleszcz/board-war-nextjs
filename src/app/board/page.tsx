@@ -1002,6 +1002,13 @@ function BoardPageContent() {
     phase,
   ]);
 
+  useEffect(() => {
+    if (phase !== "battle" || gameResult.winner) return;
+    if (activeSide === "player" && isResolvingAi) {
+      setIsResolvingAi(false);
+    }
+  }, [activeSide, gameResult.winner, isResolvingAi, phase]);
+
   // 99) Rozmieszczenie jednostki gracza w fazie deploy.
   const placeUnit = useCallback(
     async (unitId: number, coords: HexCoords) => {
