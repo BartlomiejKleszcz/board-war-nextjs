@@ -970,7 +970,15 @@ function BoardPageContent() {
       .then((afterAi) => {
         if (!isMounted) return;
         setRoundNumber(afterAi.turnNumber);
-        centerOnSide(afterAi.currentPlayerId === localPlayerId ? "player" : "enemy");
+        const nextSide = afterAi.currentPlayerId === localPlayerId ? "player" : "enemy";
+        setActiveSide(nextSide);
+        if (nextSide === "player") {
+          setSelectedUnitId(null);
+          setPathCoords([]);
+          setActed({ player: new Set(), enemy: new Set() });
+          setMoved({ player: new Set(), enemy: new Set() });
+        }
+        centerOnSide(nextSide);
       })
       .catch((e: unknown) => {
         if (!isMounted) return;
